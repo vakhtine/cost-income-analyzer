@@ -1,6 +1,6 @@
 import { analyzeTransactions } from "@/lib/analyzer";
 import { buildPeriodAdvice, detectCategorizationIssues } from "@/lib/advisor";
-import { calculateHealthScore } from "@/lib/health-score";
+import { calculateHealthScore, healthSummary } from "@/lib/health-score";
 import { comparePeriods } from "@/lib/period-analyzer";
 import { AnalyzeResponse, Transaction } from "@/lib/types";
 
@@ -112,4 +112,60 @@ export function combineAllPeriodRows(period_rows: Record<string, Transaction[]>)
 
 export function analyzeCombinedPeriods(period_rows: Record<string, Transaction[]>) {
   return analyzeTransactions(combineAllPeriodRows(period_rows));
+}
+
+export function healthScoreForPeriodSelection(
+  period_rows: Record<string, Transaction[]>,
+  selection: string
+) {
+  const periodNames = Object.keys(period_rows);
+
+  if (selection === "All periods") {
+    const combinedRows = combineAllPeriodRows(period_rows);
+    const combinedScore = calculateHealthScore({ "All periods": combinedRows });
+    if (periodNames.length <= 1) {
+      return combinedScore;
+    }
+
+    const multiPeriodScore = calculateHealthScore(period_rows);
+    return {
+      ...combinedScore,
+      income_stability_score: multiPeriodScore.income_stability_score,
+      overall: Math.round(
+        combinedScore.savings_rate_score * 0.4 +
+          multiPeriodScore.income_stability_score * 0.3 +
+          combinedScore.non_essential_score * 0.3
+      ),
+      summary: healthSummary(
+        Math.round(
+          combinedScore.savings_rate_score * 0.4 +
+            multiPeriodScore.income_stability_score * 0.3 +
+            combinedScore.non_essential_score * 0.3
+        )
+      ),
+      details: [
+        combinedScore.details[0],
+        multiPeriodScore.details[1],
+        combinedScore.details[2],
+      ],
+      metrics: combinedScore.metrics
+        ? {
+            ...combinedScore.metrics,
+            period_count: periodNames.length,
+            income_volatility_pct: multiPeriodScore.metrics?.income_volatility_pct ?? null,
+            expense_volatility_pct: multiPeriodScore.metrics?.expense_volatility_pct ?? null,
+          }
+        : undefined,
+    };
+  }
+
+  if (selection === AVERAGE_PERIOD_LABEL) {
+    return calculateHealthScore({
+      [AVERAGE_PERIOD_LABEL]: buildAveragePeriodRows(period_rows),
+    });
+  }
+
+  return calculateHealthScore({
+    [selection]: period_rows[selection] ?? [],
+  });
 }

@@ -7,6 +7,7 @@ import { CategoryIcon } from "@/components/CategoryIcon";
 type Props = {
   cities: LocationCompareResult[];
   userSpending: Record<string, number>;
+  periodLabel?: string;
   onBenchmarkChange: (city: string, categoryKey: string, value: number) => void;
   onResetCity: (city: string) => void;
 };
@@ -14,6 +15,7 @@ type Props = {
 export function CategoryBenchmarkMatrix({
   cities,
   userSpending,
+  periodLabel,
   onBenchmarkChange,
   onResetCity,
 }: Props) {
@@ -29,8 +31,15 @@ export function CategoryBenchmarkMatrix({
       <div className="section-heading">
         <h3>Category costs by city</h3>
         <p>
-          Compare rent, groceries, and other monthly categories across destinations. Edit any city
-          value to model your own rent quote or lifestyle assumptions.
+          Compare rent, groceries, gas, and other monthly categories across destinations. Edit any
+          city value to model your own rent quote or lifestyle assumptions.
+          {periodLabel ? (
+            <>
+              {" "}
+              <strong>Your spending</strong> reflects period <strong>{periodLabel}</strong> — change
+              the period selector above if rent or income was entered under a different month.
+            </>
+          ) : null}
         </p>
       </div>
 

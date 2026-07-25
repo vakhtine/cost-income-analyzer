@@ -2,8 +2,14 @@
 
 import { HEALTH_SCORE_METHODOLOGY } from "@/lib/health-score";
 import { useCurrency } from "@/lib/currency-context";
-import { AnalyzeResponse } from "@/lib/types";
+import {
+  AVERAGE_PERIOD_LABEL,
+  healthScoreForPeriodSelection,
+} from "@/lib/rebuild";
+import { buildConsecutivePeriodPairs, comparePeriods } from "@/lib/period-analyzer";
+import { AnalyzeResponse, HealthScore } from "@/lib/types";
 import { CategoryChangeCard } from "@/components/CategoryChangeCard";
+import { useEffect, useMemo, useState } from "react";
 
 function ScoreRing({ score, label }: { score: number; label: string }) {
   const degrees = (score / 100) * 360;
@@ -57,91 +63,145 @@ function BreakdownBar({
   );
 }
 
-function HealthMetricsGrid({ data }: { data: AnalyzeResponse }) {
+function HealthMetricsGrid({ healthScore }: { healthScore: HealthScore }) {
   const { formatIncome, formatExpense } = useCurrency();
-  const metrics = data.health_score.metrics;
+  const metrics = healthScore.metrics;
 
   if (!metrics) {
     return null;
   }
 
   return (
+    <div className="health-metrics-grid">
+      <div className="health-metric-card">
+        <span>Savings rate</span>
+        <strong>{metrics.savings_rate_pct.toFixed(1)}%</strong>
+      </div>
+      <div className="health-metric-card">
+        <span>Total income</span>
+        <strong>{formatIncome(metrics.total_income)}</strong>
+      </div>
+      <div className="health-metric-card">
+        <span>Total expenses</span>
+        <strong>{formatExpense(metrics.total_expenses)}</strong>
+      </div>
+      <div className="health-metric-card">
+        <span>Net savings</span>
+        <strong className={metrics.net_savings >= 0 ? "pos" : "neg"}>
+          {formatIncome(metrics.net_savings)}
+        </strong>
+      </div>
+      <div className="health-metric-card">
+        <span>Expense / income ratio</span>
+        <strong>{metrics.expense_to_income_ratio.toFixed(1)}%</strong>
+      </div>
+      <div className="health-metric-card">
+        <span>Non-essential spending</span>
+        <strong>
+          {formatExpense(metrics.non_essential_total)} (
+          {metrics.non_essential_of_expenses_pct.toFixed(1)}% of expenses)
+        </strong>
+      </div>
+      <div className="health-metric-card">
+        <span>Income sources</span>
+        <strong>{metrics.income_source_count}</strong>
+      </div>
+      <div className="health-metric-card">
+        <span>Periods analyzed</span>
+        <strong>{metrics.period_count}</strong>
+      </div>
+      <div className="health-metric-card">
+        <span>Income volatility</span>
+        <strong>
+          {metrics.income_volatility_pct !== null
+            ? `${metrics.income_volatility_pct.toFixed(1)}%`
+            : "N/A (single period)"}
+        </strong>
+      </div>
+      <div className="health-metric-card">
+        <span>Largest expense category</span>
+        <strong>
+          {metrics.largest_expense_category} ({formatExpense(metrics.largest_expense_amount)})
+        </strong>
+      </div>
+      <div
+        className="health-metric-card"
+        title="How much total expenses swing period to period (standard deviation divided by average). Lower volatility means more predictable spending."
+      >
+        <span>Expense volatility</span>
+        <strong>
+          {metrics.expense_volatility_pct !== null
+            ? `${metrics.expense_volatility_pct.toFixed(1)}%`
+            : "N/A (single period)"}
+        </strong>
+      </div>
+      <div
+        className="health-metric-card"
+        title="Total monthly expenses divided by 30 — your average daily burn rate for budgeting."
+      >
+        <span>Average daily spend</span>
+        <strong>{formatExpense(metrics.avg_daily_spend)}</strong>
+      </div>
+    </div>
+  );
+}
+
+function periodSelectionLabel(selection: string) {
+  if (selection === "All periods") return "All periods";
+  if (selection === AVERAGE_PERIOD_LABEL) return "Average (all periods)";
+  return selection;
+}
+
+export function HealthMetricsPanel({ data }: { data: AnalyzeResponse }) {
+  const latest = data.periods[data.periods.length - 1];
+  const [metricsPeriod, setMetricsPeriod] = useState(latest);
+
+  useEffect(() => {
+    if (
+      !metricsPeriod ||
+      (!data.periods.includes(metricsPeriod) &&
+        metricsPeriod !== AVERAGE_PERIOD_LABEL &&
+        metricsPeriod !== "All periods")
+    ) {
+      setMetricsPeriod(latest);
+    }
+  }, [data, latest, metricsPeriod]);
+
+  const healthScore = useMemo(
+    () => healthScoreForPeriodSelection(data.period_rows, metricsPeriod),
+    [data.period_rows, metricsPeriod]
+  );
+
+  return (
     <section className="card health-metrics-panel">
       <div className="section-heading">
         <h3>Additional health metrics</h3>
-        <p>Raw numbers behind your score — useful for spotting trends and trade-offs.</p>
+        <p>
+          Raw numbers behind your score for{" "}
+          <strong>{periodSelectionLabel(metricsPeriod)}</strong> — useful for spotting trends and
+          trade-offs.
+        </p>
       </div>
-      <div className="health-metrics-grid">
-        <div className="health-metric-card">
-          <span>Savings rate</span>
-          <strong>{metrics.savings_rate_pct.toFixed(1)}%</strong>
-        </div>
-        <div className="health-metric-card">
-          <span>Total income</span>
-          <strong>{formatIncome(metrics.total_income)}</strong>
-        </div>
-        <div className="health-metric-card">
-          <span>Total expenses</span>
-          <strong>{formatExpense(metrics.total_expenses)}</strong>
-        </div>
-        <div className="health-metric-card">
-          <span>Net savings</span>
-          <strong className={metrics.net_savings >= 0 ? "pos" : "neg"}>
-            {formatIncome(metrics.net_savings)}
-          </strong>
-        </div>
-        <div className="health-metric-card">
-          <span>Expense / income ratio</span>
-          <strong>{metrics.expense_to_income_ratio.toFixed(1)}%</strong>
-        </div>
-        <div className="health-metric-card">
-          <span>Non-essential spending</span>
-          <strong>
-            {formatExpense(metrics.non_essential_total)} (
-            {metrics.non_essential_of_expenses_pct.toFixed(1)}% of expenses)
-          </strong>
-        </div>
-        <div className="health-metric-card">
-          <span>Income sources</span>
-          <strong>{metrics.income_source_count}</strong>
-        </div>
-        <div className="health-metric-card">
-          <span>Periods analyzed</span>
-          <strong>{metrics.period_count}</strong>
-        </div>
-        <div className="health-metric-card">
-          <span>Income volatility</span>
-          <strong>
-            {metrics.income_volatility_pct !== null
-              ? `${metrics.income_volatility_pct.toFixed(1)}%`
-              : "N/A (single period)"}
-          </strong>
-        </div>
-        <div className="health-metric-card">
-          <span>Largest expense category</span>
-          <strong>
-            {metrics.largest_expense_category} ({formatExpense(metrics.largest_expense_amount)})
-          </strong>
-        </div>
-        <div
-          className="health-metric-card"
-          title="How much total expenses swing period to period (standard deviation divided by average). Lower volatility means more predictable spending."
+      <label className="analyze-period-label health-metrics-period-label">
+        Metrics period
+        <select
+          value={metricsPeriod}
+          onChange={(event) => setMetricsPeriod(event.target.value)}
         >
-          <span>Expense volatility</span>
-          <strong>
-            {metrics.expense_volatility_pct !== null
-              ? `${metrics.expense_volatility_pct.toFixed(1)}%`
-              : "N/A (single period)"}
-          </strong>
-        </div>
-        <div
-          className="health-metric-card"
-          title="Total monthly expenses divided by 30 — your average daily burn rate for budgeting."
-        >
-          <span>Average daily spend</span>
-          <strong>{formatExpense(metrics.avg_daily_spend)}</strong>
-        </div>
-      </div>
+          {data.periods.map((period) => (
+            <option key={period} value={period}>
+              {period}
+            </option>
+          ))}
+          {data.periods.length > 1 && (
+            <>
+              <option value="All periods">All periods</option>
+              <option value={AVERAGE_PERIOD_LABEL}>Average (all periods)</option>
+            </>
+          )}
+        </select>
+      </label>
+      <HealthMetricsGrid healthScore={healthScore} />
     </section>
   );
 }
@@ -153,9 +213,8 @@ export function FinancialHealthPanel({ data }: { data: AnalyzeResponse }) {
     <div className="stack">
       <section className="card advisor-hero">
         <div className="advisor-hero-grid">
-          <ScoreRing score={health_score.overall} label="Financial health" />
+          <ScoreRing score={health_score.overall} label="Financial health score" />
           <div>
-            <h3>Financial health score</h3>
             <p className="advisor-summary">{health_score.summary}</p>
             <p className="insight advisor-score-note">
               This financial health score measures savings habits and spending patterns. Relocation
@@ -186,7 +245,7 @@ export function FinancialHealthPanel({ data }: { data: AnalyzeResponse }) {
         </div>
       </section>
 
-      <HealthMetricsGrid data={data} />
+      <HealthMetricsPanel data={data} />
 
       <section className="card methodology-card">
         <h3>How these scores are calculated</h3>
@@ -211,9 +270,25 @@ export function FinancialHealthPanel({ data }: { data: AnalyzeResponse }) {
 
 export function PeriodChangePanel({ data }: { data: AnalyzeResponse }) {
   const { formatIncome, formatExpense } = useCurrency();
-  const { comparison } = data;
+  const pairs = useMemo(() => buildConsecutivePeriodPairs(data.periods), [data.periods]);
+  const [selectedPairIndex, setSelectedPairIndex] = useState(0);
 
-  if (!comparison) {
+  useEffect(() => {
+    setSelectedPairIndex(Math.max(0, pairs.length - 1));
+  }, [pairs.length]);
+
+  const comparison = useMemo(() => {
+    const pair = pairs[selectedPairIndex];
+    if (!pair) return null;
+    return comparePeriods(
+      data.period_rows[pair.previous] ?? [],
+      data.period_rows[pair.current] ?? [],
+      pair.previous,
+      pair.current
+    );
+  }, [data.period_rows, pairs, selectedPairIndex]);
+
+  if (pairs.length === 0) {
     return (
       <section className="card">
         <p className="insight">
@@ -223,17 +298,34 @@ export function PeriodChangePanel({ data }: { data: AnalyzeResponse }) {
     );
   }
 
+  if (!comparison) {
+    return null;
+  }
+
   return (
     <section className="card period-change-card">
       <div className="section-heading">
-        <h3>
-          Period change: {comparison.previous_period} → {comparison.current_period}
-        </h3>
+        <h3>Period change</h3>
         <p>
-          Each category shows at most three merchants or transactions that best explain the
-          change.
+          Compare one month to the next — select a consecutive pair below. Each category shows at
+          most three merchants or transactions that best explain the change.
         </p>
       </div>
+
+      <label className="analyze-period-label period-change-label">
+        Month-to-month comparison
+        <select
+          value={selectedPairIndex}
+          onChange={(event) => setSelectedPairIndex(Number(event.target.value))}
+        >
+          {pairs.map((pair, index) => (
+            <option key={pair.label} value={index}>
+              {pair.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
       <div className="summary-pills">
         <div className={`summary-pill ${comparison.income_change >= 0 ? "good" : "bad"}`}>
           <span>Income</span>

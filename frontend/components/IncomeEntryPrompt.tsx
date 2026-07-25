@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { resolveTransactionType } from "@/lib/constants";
+import { appendEditableRowToPeriodRows } from "@/lib/categorization";
 import { rebuildAnalyzeResponse } from "@/lib/rebuild";
-import { AnalyzeResponse, Transaction } from "@/lib/types";
+import { AnalyzeResponse } from "@/lib/types";
 
 const INCOME_TYPES = [
   "Salary",
@@ -60,26 +60,25 @@ export function IncomeEntryPrompt({
       return;
     }
 
-    const periodRows = { ...data.period_rows };
-    const rows = [...(periodRows[periodLabel] ?? [])];
     const nextId =
-      Object.values(periodRows)
+      Object.values(data.period_rows)
         .flat()
         .reduce((max, row) => Math.max(max, row.id), -1) + 1;
     const category = incomeType;
-    const transaction: Transaction = {
-      id: nextId,
-      merchant_name: merchant.trim(),
-      category,
-      amount: parsedAmount,
-      date: date || undefined,
-      period: periodLabel,
-      transaction_type: resolveTransactionType(category),
-      abs_amount: Math.abs(parsedAmount),
-    };
 
-    periodRows[periodLabel] = [...rows, transaction];
-    onUpdate(rebuildAnalyzeResponse(periodRows));
+    const next = appendEditableRowToPeriodRows(
+      {
+        id: nextId,
+        merchant_name: merchant.trim(),
+        category,
+        amount: parsedAmount,
+        date: date || "",
+      },
+      periodLabel,
+      data.period_rows
+    );
+
+    onUpdate(rebuildAnalyzeResponse(next));
     setMerchant("");
     setAmount("");
     setDate("");

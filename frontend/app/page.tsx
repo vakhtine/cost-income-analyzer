@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { FinancialHealthPanel, PeriodChangePanel } from "@/components/AdvisorView";
 import { CurrencySettingsPanel } from "@/components/CurrencySettingsPanel";
 import { CustomReportExport } from "@/components/CustomReportExport";
 import { DashboardView, InsightsPanel } from "@/components/DashboardView";
 import { HeroSection } from "@/components/HeroSection";
+import { IncomeEntryPrompt } from "@/components/IncomeEntryPrompt";
 import { MultiPeriodView } from "@/components/MultiPeriodView";
 import { RelocationExplorer } from "@/components/RelocationExplorer";
 import { ReviewTab } from "@/components/ReviewTab";
@@ -19,10 +20,10 @@ import {
   analyzeAveragePeriods,
   analyzeCombinedPeriods,
 } from "@/lib/rebuild";
+import { findRelocatePeriod } from "@/lib/relocate-period";
 import { useCurrency } from "@/lib/currency-context";
 import { AnalyzeResponse } from "@/lib/types";
 import { WizardStep } from "@/lib/wizard";
-
 export default function HomePage() {
   const [data, setData] = useState<AnalyzeResponse | null>(null);
   const [wizardStep, setWizardStep] = useState<WizardStep>("upload");
@@ -83,8 +84,28 @@ export default function HomePage() {
       ? "Average (all periods)"
       : selectedPeriod || data?.periods[data.periods.length - 1] || "";
 
-  async function handleUpload(files: File[]) {
-    setLoading(true);
+  const dashboardHeading = isAllPeriods
+    ? "Combined totals — all periods"
+    : isAveragePeriod
+      ? "Average per period — all periods"
+      : `Period details — ${activePeriodLabel}`;
+
+  const incomeEntryPeriodLabel =
+    !isAllPeriods && !isAveragePeriod && selectedPeriod
+      ? selectedPeriod
+      : data?.periods[data.periods.length - 1] ?? "";
+
+  const cleanIncomePeriodLabel = data?.periods[data.periods.length - 1] ?? "";
+
+  const updateData = useCallback(
+    (next: AnalyzeResponse) => {
+      setData(next);
+      setLocationPeriod((current) => findRelocatePeriod(next, current));
+    },
+    []
+  );
+
+  async function handleUpload(files: File[]) {    setLoading(true);
     setError("");
     try {
       const result = await analyzeFilesInBrowser(files);
@@ -104,9 +125,15 @@ export default function HomePage() {
 
   function goToStep(step: WizardStep) {
     if (!data && step !== "upload") return;
+    if (step === "relocate" && data) {
+      const relocatePeriod =
+        !isAllPeriods && !isAveragePeriod && selectedPeriod
+          ? selectedPeriod
+          : findRelocatePeriod(data, locationPeriod);
+      setLocationPeriod(relocatePeriod);
+    }
     setWizardStep(step);
   }
-
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [wizardStep]);
@@ -136,8 +163,13 @@ export default function HomePage() {
           {wizardStep === "clean" && (
             <div className="stack">
               <CleanStepSummary data={data} />
-              <ReviewTab data={data} onUpdate={setData} />
-              <div className="wizard-nav">
+              <IncomeEntryPrompt
+                data={data}
+                periodLabel={cleanIncomePeriodLabel}
+                onUpdate={updateData}
+                context="clean"
+              />
+              <ReviewTab data={data} onUpdate={updateData} />              <div className="wizard-nav">
                 <button className="tab" onClick={() => goToStep("upload")}>
                   Back
                 </button>
@@ -151,9 +183,8 @@ export default function HomePage() {
           {wizardStep === "analyze" && (
             <div className="stack">
               <CurrencySettingsPanel />
-              {activeAnalysis && <InsightsPanel analysis={activeAnalysis} />}
               <FinancialHealthPanel data={data} />
-              <AnalyzeStepSummary data={data} />
+
               <section className="card analyze-period-bar">
                 <label className="analyze-period-label">
                   Period
@@ -175,45 +206,32 @@ export default function HomePage() {
                   </select>
                 </label>
               </section>
-              {isAllPeriods && combinedAnalysis && (
+
+              {activeAnalysis && (
                 <>
-                  <h3>Combined totals — all periods</h3>
+                  <AnalyzeStepSummary analysis={activeAnalysis} periodLabel={activePeriodLabel} />
+                  <InsightsPanel analysis={activeAnalysis} />
+                  <h3 className="analyze-section-heading">{dashboardHeading}</h3>
                   <DashboardView
-                    analysis={combinedAnalysis}
-                    showCharts={data.periods.length <= 3}
+                    analysis={activeAnalysis}
+                    showCharts
                     data={data}
-                    periodLabel={data.periods[data.periods.length - 1]}
-                    onUpdate={setData}
+                    periodLabel={incomeEntryPeriodLabel}
+                    onUpdate={updateData}
                   />
                 </>
               )}
-              {isAveragePeriod && averageAnalysis && (
-                <>
-                  <h3>Average per period — all periods</h3>
-                  <DashboardView
-                    analysis={averageAnalysis}
-                    data={data}
-                    periodLabel={AVERAGE_PERIOD_LABEL}
-                    onUpdate={setData}
-                  />
-                </>
-              )}
-              {!isAllPeriods && !isAveragePeriod && singleAnalysis && (
-                <DashboardView
-                  analysis={singleAnalysis}
-                  data={data}
-                  periodLabel={selectedPeriod || data.periods[data.periods.length - 1]}
-                  onUpdate={setData}
-                />
-              )}
-              <CustomReportExport
-                disabled={!activeAnalysis}
+              <CustomReportExport                periods={data.periods}
+                requirePeriodSelection
                 availableTypes={["expenses-by-category", "financial-health"]}
-                buildPayload={async () => {
-                  const analysis = activeAnalysis!;
+                buildPayload={(periodLabel) => {
+                  const analysis = data.period_analysis[periodLabel];
+                  if (!analysis) {
+                    throw new Error(`No analysis found for period ${periodLabel}.`);
+                  }
                   return {
                     generatedAt: new Date().toLocaleString(),
-                    periodLabel: activePeriodLabel,
+                    periodLabel,
                     displayCurrency: settings.displayCurrency,
                     data,
                     periodAnalysis: analysis,

@@ -63,8 +63,9 @@ export function UploadZone({ onUpload, loading, onError }: Props) {
       <h2>Upload your statements</h2>
       <p className="upload-subtitle">
         Upload one or more CSV or Excel files with the <strong>same column headers</strong>{" "}
-        (<strong>Merchant</strong>, <strong>Category</strong>, and <strong>Amount</strong> or Total
-        Amount). Each file can represent a separate month. No bank login required.
+        (<strong>Merchant</strong>, <strong>Category</strong>, <strong>Amount</strong>, and{" "}
+        <strong>Date</strong> optional — highly recommended for more detailed analysis and reports).
+        Each file can represent a separate month. No bank login required.
       </p>
 
       <StatementSanitizerPanel />

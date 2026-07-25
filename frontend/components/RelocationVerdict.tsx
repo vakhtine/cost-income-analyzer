@@ -37,7 +37,6 @@ export function RelocationVerdict({
     <section className={`verdict-card verdict-${affordability.verdict}`}>
       <div className="verdict-header">
         <div>
-          <div className="verdict-eyebrow">Relocation affordability</div>
           <h3>{affordability.verdictLabel}</h3>
           <p className="verdict-score-note">
             <strong>{affordability.score}/100</strong> — relocation fit based on scenario income minus
@@ -53,16 +52,19 @@ export function RelocationVerdict({
             )}
           </p>
         </div>
-        <div
-          className="verdict-score-ring"
-          style={{
-            background: `conic-gradient(var(--verdict-color) ${degrees}deg, #e2e8f0 0deg)`,
-          }}
-        >
-          <div className="verdict-score-inner">
-            <strong>{affordability.score}</strong>
-            <span>/100</span>
+        <div className="score-ring-wrap verdict-score-wrap">
+          <div
+            className="score-ring verdict-score-ring"
+            style={{
+              background: `conic-gradient(var(--verdict-color) ${degrees}deg, #e2e8f0 0deg)`,
+            }}
+          >
+            <div className="score-ring-inner">
+              <div className="score-ring-value">{affordability.score}</div>
+              <div className="score-ring-max">/100</div>
+            </div>
           </div>
+          <div className="score-ring-label">Relocation affordability</div>
         </div>
       </div>
 

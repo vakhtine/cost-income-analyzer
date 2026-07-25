@@ -21,12 +21,14 @@ const TIMELINE_OPTIONS: { id: RelocationTimeline; label: string }[] = [
 
 type Props = {
   analysis: PeriodAnalysis;
+  periodLabel?: string;
   defaultCity?: string;
   householdSize?: number;
 };
 
 export function RelocationProfilePanel({
   analysis,
+  periodLabel,
   defaultCity = "",
   householdSize = 1,
 }: Props) {
@@ -128,8 +130,14 @@ export function RelocationProfilePanel({
         <h3>Your relocation profile</h3>
         <p>
           Choose a destination city and optional savings. Runway, move readiness, and income
-          coverage are calculated from that city&apos;s estimated monthly costs and your uploaded
-          income — stored only in this browser session.
+          coverage use your uploaded income
+          {periodLabel ? (
+            <>
+              {" "}
+              for period <strong>{periodLabel}</strong>
+            </>
+          ) : null}{" "}
+          and that city&apos;s estimated monthly costs — stored only in this browser session.
         </p>
       </div>
 

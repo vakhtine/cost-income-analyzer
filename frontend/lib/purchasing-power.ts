@@ -32,9 +32,9 @@ export function purchasingPowerMultiplier(
 }
 
 /**
- * Headline multiplier: how many times further income goes in the source city vs destination.
- * This is a cost-of-living ratio and is the same in any display currency — currency strength
- * does not change the relative purchasing power between two cities.
+ * Headline multiplier shown in the UI.
+ * Starts from the city cost-of-living ratio, then scales by how the display currency
+ * relates to USD so stronger currencies (e.g. USD vs CAD) show a higher multiplier.
  */
 export function displayPurchasingPowerMultiplier(
   amountUsd: number,
@@ -44,9 +44,8 @@ export function displayPurchasingPowerMultiplier(
 ) {
   if (!equivalentUsd) return 0;
 
-  const amountDisplay = convertAmount(amountUsd, "USD", displayCurrency, rates);
-  const equivalentDisplay = convertAmount(equivalentUsd, "USD", displayCurrency, rates);
-  if (!equivalentDisplay) return 0;
+  const cityRatio = amountUsd / equivalentUsd;
+  const displayToUsd = convertAmount(1, displayCurrency, "USD", rates);
 
-  return round2(amountDisplay / equivalentDisplay);
+  return round2(cityRatio * displayToUsd);
 }

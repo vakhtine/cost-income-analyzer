@@ -9,9 +9,11 @@ import {
 } from "@/lib/export-custom-reports";
 
 type Props = {
-  buildPayload: () => CustomReportPayload | Promise<CustomReportPayload>;
+  buildPayload: (periodLabel: string) => CustomReportPayload | Promise<CustomReportPayload>;
   disabled?: boolean;
   availableTypes?: CustomReportType[];
+  periods?: string[];
+  requirePeriodSelection?: boolean;
 };
 
 const ALL_TYPES: CustomReportType[] = [
@@ -24,11 +26,14 @@ export function CustomReportExport({
   buildPayload,
   disabled = false,
   availableTypes = ALL_TYPES,
+  periods,
+  requirePeriodSelection = false,
 }: Props) {
   const [selected, setSelected] = useState<CustomReportType[]>([
     "expenses-by-category",
     "financial-health",
   ]);
+  const [reportPeriod, setReportPeriod] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -45,11 +50,17 @@ export function CustomReportExport({
       return;
     }
 
+    if (requirePeriodSelection && !reportPeriod) {
+      setError("Choose a period for which the report is to be generated.");
+      return;
+    }
+
     setError("");
     setStatus("");
     setLoading(true);
     try {
-      await exportCustomReports(selected, await buildPayload());
+      const periodLabel = requirePeriodSelection ? reportPeriod : reportPeriod || periods?.[0] || "";
+      await exportCustomReports(selected, await buildPayload(periodLabel));
       setStatus("PDF report downloaded successfully.");
       window.setTimeout(() => setStatus(""), 8000);
     } catch (exportError) {
@@ -70,6 +81,29 @@ export function CustomReportExport({
           the PDF file.
         </p>
       </div>
+
+      {periods?.length ? (
+        <label className="custom-report-period-label">
+          Report period
+          <select
+            value={reportPeriod}
+            onChange={(event) => {
+              setReportPeriod(event.target.value);
+              setError("");
+            }}
+            disabled={disabled || loading}
+          >
+            <option value="">
+              {requirePeriodSelection ? "Select a period..." : "Latest period"}
+            </option>
+            {periods.map((period) => (
+              <option key={period} value={period}>
+                {period}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
 
       <div className="custom-report-options">
         {availableTypes.map((type) => (

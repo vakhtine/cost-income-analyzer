@@ -6,6 +6,14 @@ export function escapeHtml(value: string) {
     .replace(/"/g, "&quot;");
 }
 
+export function reportPreparedLine(
+  generatedAt: string,
+  periodLabel: string,
+  displayCurrency: string
+) {
+  return `<p class="report-prepared">Report prepared on ${escapeHtml(generatedAt)} for period ${escapeHtml(periodLabel)}. All amounts in ${escapeHtml(displayCurrency)}.</p>`;
+}
+
 export const REPORT_BRAND_FOOTER_PATH = "/brand-pdf-footer.png";
 
 export function reportAssetUrl(path: string) {
@@ -43,19 +51,29 @@ export const BASE_REPORT_STYLES = `
   }
   .page {
     position: relative;
+    display: flex;
+    flex-direction: column;
     width: 794px;
+    min-height: 1050px;
     height: 1050px;
     overflow: hidden;
-    padding: 16px 16px 36px;
+    padding: 16px 16px 20px;
     page-break-after: always;
     break-after: page;
     background: #fff;
   }
   .page:last-child { page-break-after: auto; }
   .page-header {
+    flex: 0 0 auto;
     border-bottom: 2px solid var(--primary);
     padding-bottom: 10px;
     margin-bottom: 14px;
+  }
+  .page-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    padding-bottom: 12px;
   }
   .top-bar {
     display: flex;
@@ -87,6 +105,47 @@ export const BASE_REPORT_STYLES = `
     margin: 0 0 12px;
     color: var(--muted);
     font-size: 11px;
+    max-width: 95%;
+  }
+  .report-prepared {
+    margin: 0 0 12px;
+    color: var(--ink);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.45;
+    max-width: 95%;
+  }
+  .section-explanation {
+    margin: 0 0 12px;
+    font-size: 11px;
+    color: var(--ink);
+    line-height: 1.45;
+  }
+  .section-explanation strong {
+    color: var(--ink);
+  }
+  .score-ring-caption {
+    margin: 8px 0 12px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .city-context-grid {
+    margin-bottom: 12px;
+  }
+  .currency-note {
+    margin: 0 0 12px;
+    color: var(--primary-dark);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .intro-emphasis {
+    margin: 0 0 12px;
+    color: var(--ink);
+    font-size: 11px;
+    line-height: 1.5;
+    font-weight: 700;
     max-width: 95%;
   }
   .privacy-banner {
@@ -204,7 +263,11 @@ export const BASE_REPORT_STYLES = `
     grid-template-columns: 120px 1fr 80px;
     gap: 8px;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+  }
+  .bar-chart-section {
+    margin-top: 4px;
+    padding-bottom: 8px;
   }
   .bar-track {
     height: 20px;
@@ -225,6 +288,13 @@ export const BASE_REPORT_STYLES = `
     background: #fff;
   }
   .factor-row strong { color: var(--primary-dark); }
+  .factor-detail {
+    margin: 6px 0 0;
+    font-size: 11px;
+    color: var(--ink);
+    font-weight: 700;
+    line-height: 1.45;
+  }
   .factor-track {
     height: 10px;
     background: #eef4f6;
@@ -400,9 +470,10 @@ export const BASE_REPORT_STYLES = `
     display: none;
   }
   .pdf-page-footer {
-    position: absolute;
-    right: 18px;
-    bottom: 12px;
+    flex: 0 0 auto;
+    margin-top: auto;
+    padding-top: 10px;
+    text-align: right;
     font-size: 9px;
     font-weight: 600;
     color: var(--muted);
@@ -447,14 +518,15 @@ export function buildReportPageShell(options: {
   <section class="page">
     <header class="page-header">
       <div class="top-bar">
-        <span>${escapeHtml(reportLabel)}</span>
         <span>Page ${pageNumber} of ${totalPages}</span>
       </div>
-      <h1 class="page-title">${escapeHtml(pageTitle)}</h1>
+      <h1 class="page-title">${escapeHtml(reportLabel)}: ${escapeHtml(pageTitle)}</h1>
       ${pageSubtitle ? `<p class="page-subtitle">${escapeHtml(pageSubtitle)}</p>` : ""}
     </header>
     ${privacyBlock}
-    ${body}
+    <div class="page-content">
+      ${body}
+    </div>
     <footer class="pdf-page-footer">
       <span class="ftr-page">Page ${pageNumber} of ${totalPages}</span>
     </footer>

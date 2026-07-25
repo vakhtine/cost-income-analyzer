@@ -1,9 +1,19 @@
-import { IconExcel } from "@/components/Icons";
+import { IconExcel, IconFile } from "@/components/Icons";
 import {
   STATEMENT_SANITIZER,
+  STATEMENT_SANITIZER_DOWNLOADS,
   STATEMENT_SANITIZER_PRIVACY,
   STATEMENT_SANITIZER_STEPS,
+  SanitizerDownload,
 } from "@/lib/statement-sanitizer";
+
+function DownloadIcon({ kind }: { kind: SanitizerDownload["kind"] }) {
+  if (kind === "excel") {
+    return <IconExcel size={28} />;
+  }
+
+  return <IconFile size={28} className={`sanitizer-file-icon sanitizer-file-icon-${kind}`} />;
+}
 
 export function StatementSanitizerPanel() {
   return (
@@ -27,23 +37,27 @@ export function StatementSanitizerPanel() {
         </ol>
       </div>
 
-      <div className="excel-sanitizer-download-card">
-        <div className="excel-sanitizer-file-meta">
-          <IconExcel size={28} />
-          <div>
-            <strong>{STATEMENT_SANITIZER.fileName}</strong>
-            <span className="excel-sanitizer-file-note">
-              Macro-enabled Excel workbook · download from this page
-            </span>
+      <div className="excel-sanitizer-downloads">
+        <h4 className="excel-sanitizer-downloads-heading">Downloads</h4>
+        {STATEMENT_SANITIZER_DOWNLOADS.map((item) => (
+          <div key={item.id} className="excel-sanitizer-download-card">
+            <div className="excel-sanitizer-file-meta">
+              <DownloadIcon kind={item.kind} />
+              <div>
+                <strong>{item.label}</strong>
+                <span className="excel-sanitizer-file-note">{item.note}</span>
+                <span className="excel-sanitizer-file-name">{item.fileName}</span>
+              </div>
+            </div>
+            <a
+              className="tab active excel-sanitizer-download-btn"
+              href={item.publicPath}
+              download={item.fileName}
+            >
+              {item.buttonLabel}
+            </a>
           </div>
-        </div>
-        <a
-          className="tab active excel-sanitizer-download-btn"
-          href={STATEMENT_SANITIZER.publicPath}
-          download={STATEMENT_SANITIZER.fileName}
-        >
-          Download Excel file
-        </a>
+        ))}
       </div>
 
       <p className="excel-sanitizer-privacy">{STATEMENT_SANITIZER_PRIVACY}</p>

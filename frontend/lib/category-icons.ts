@@ -47,7 +47,7 @@ export function getCategoryMeta(category: string): CategoryMeta {
   if (key.includes("discount") && key.includes("retail")) {
     return { iconId: "discount-retail", tone: "cat-discount-retail", symbol: "%" };
   }
-  if (key.includes("gas") && key.includes("fuel")) {
+  if (key === "gas" || (key.includes("gas") && !key.includes("transport"))) {
     return { iconId: "gas-fuel", tone: "cat-gas-fuel", symbol: "⛽" };
   }
   if (

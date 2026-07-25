@@ -59,6 +59,17 @@ export function MultiCityCostComparison({ baseCity, cities, formatUsd }: Props) 
 
   const baseProfile = profiles[baseCity];
   const loadedDestinations = destinationCities.filter((city) => profiles[city]);
+  const sourceProfiles = [baseProfile, ...loadedDestinations.map((city) => profiles[city])].filter(
+    Boolean
+  ) as CityCostProfile[];
+  const sourceLabels = [
+    ...new Set(
+      sourceProfiles.map(
+        (profile) =>
+          `${profile.metadata.dataSource ?? profile.metadata.source} (updated ${profile.metadata.updated})`
+      )
+    ),
+  ];
 
   return (
     <section className="card multi-city-cost-comparison">
@@ -68,6 +79,11 @@ export function MultiCityCostComparison({ baseCity, cities, formatUsd }: Props) 
           Restaurants, groceries, and transport &amp; utilities compared side-by-side for your
           current city and each selected destination.
         </p>
+        {sourceLabels.length > 0 && (
+          <p className="section-note multi-city-source-note">
+            <strong>Source:</strong> {sourceLabels.join(" · ")}
+          </p>
+        )}
       </div>
 
       {loading && <p className="section-note">Loading typical local costs...</p>}
@@ -125,10 +141,6 @@ export function MultiCityCostComparison({ baseCity, cities, formatUsd }: Props) 
               })}
             </tbody>
           </table>
-          <p className="expatistan-source-note">
-            Category totals sum typical item prices in USD for each city. Source: WhereNext / public
-            cost-of-living references.
-          </p>
         </div>
       )}
     </section>

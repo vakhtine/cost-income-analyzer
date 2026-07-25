@@ -3,6 +3,7 @@ export const BENCHMARK_CATEGORIES = [
   { key: "groceries", label: "Groceries" },
   { key: "restaurants", label: "Restaurants" },
   { key: "transport", label: "Transport" },
+  { key: "gas", label: "Gas & fuel" },
   { key: "utilities", label: "Utilities" },
   { key: "entertainment", label: "Entertainment" },
 ] as const;

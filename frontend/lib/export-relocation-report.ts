@@ -7,8 +7,9 @@ import {
   buildReportPageShell,
   downloadReportPdf,
   escapeHtml,
+  reportPreparedLine,
 } from "@/lib/report-export";
-import { getPeriodExpenseDateLabel, getReportPrivacyNotice } from "@/lib/report-dates";
+import { getReportPrivacyNotice } from "@/lib/report-dates";
 
 export type ReportRecommendation = {
   city: string;
@@ -44,6 +45,7 @@ export type ReportPayload = {
 };
 
 const TOTAL_PAGES = 2;
+const REPORT_LABEL = "Relocation affordability";
 
 function formatPct(value: number, signed = true) {
   const prefix = signed && value > 0 ? "+" : "";
@@ -63,22 +65,23 @@ function timelineLabel(timeline: RelocationTimeline | null) {
   }
 }
 
-function pageShell(
-  pageNumber: number,
-  pageTitle: string,
-  pageSubtitle: string,
-  body: string,
-  privacyNotice: string
-) {
+function pageShell(pageNumber: number, pageTitle: string, body: string, privacyNotice: string) {
   return buildReportPageShell({
     pageNumber,
     totalPages: TOTAL_PAGES,
-    reportLabel: "RELOCATION AFFORDABILITY",
+    reportLabel: REPORT_LABEL,
     pageTitle,
-    pageSubtitle,
     body,
     privacyNotice,
   });
+}
+
+function cityContextBlock(baseCity: string, bestFitCity: string) {
+  return `
+    <div class="meta-grid city-context-grid">
+      <div><span>Your current city</span><strong>${escapeHtml(baseCity)}</strong></div>
+      <div><span>Best-fit city</span><strong>${escapeHtml(bestFitCity)}</strong></div>
+    </div>`;
 }
 
 function adjustmentChart(
@@ -94,7 +97,7 @@ function adjustmentChart(
   const balanceW = Math.round((Math.abs(balance) / max) * 100);
 
   return `
-    <h2 class="chart-title">Affordability adjustment</h2>
+    <h2 class="section-title">Affordability adjustment</h2>
     <div class="adjustment-chart">
       <div class="adj-row">
         <div class="adj-label">Scenario monthly income (after exchange & what-if)</div>
@@ -141,10 +144,7 @@ function buildPageOne(payload: ReportPayload) {
   const destLabel = dest.split(",")[0]?.trim() ?? dest;
 
   const body = `
-    <p class="intro">
-      Relocation affordability report prepared on ${escapeHtml(payload.generatedAt)} for period
-      ${escapeHtml(payload.periodLabel)}. All amounts in ${escapeHtml(payload.displayCurrency)}.
-    </p>
+    ${reportPreparedLine(payload.generatedAt, payload.periodLabel, payload.displayCurrency)}
     <div class="meta-grid">
       <div><span>Your current city</span><strong>${escapeHtml(payload.baseCity)}</strong></div>
       <div><span>Best-fit city</span><strong>${escapeHtml(dest)}</strong></div>
@@ -171,7 +171,7 @@ function buildPageOne(payload: ReportPayload) {
           <td>Projected monthly balance</td>
           <td class="${(aff?.projectedBalance ?? 0) >= 0 ? "pos" : "neg"}">
             <strong>${aff ? `${aff.projectedBalance >= 0 ? "+" : ""}${payload.formatDisplay(aff.projectedBalance)}` : "—"}</strong>
-            ${aff ? `<div class="sub-val">${escapeHtml(aff.verdictLabel)} · ${aff.score}/100</div>` : ""}
+            ${aff ? `<div class="sub-val">${escapeHtml(aff.verdictLabel)} · Relocation affordability score ${aff.score}/100</div>` : ""}
           </td>
         </tr>
       </tbody>
@@ -190,22 +190,16 @@ function buildPageOne(payload: ReportPayload) {
     }
 
     <div class="verdict-box">
-      <strong>Relocation affordability: ${aff ? `${aff.score}/100 — ${escapeHtml(aff.verdictLabel)}` : "Not calculated"}</strong>
-      <p class="section-note">Relocation affordability measures whether destination costs fit your scenario income. Your overall financial health score (${payload.data.health_score.overall}/100 — ${escapeHtml(payload.data.health_score.summary)}) measures savings habits and spending patterns. These are different scores and can both be high.</p>
-      ${aff?.tips[0] ? `<p>${escapeHtml(aff.tips[0])}</p>` : ""}
-      ${aff ? `<p>${escapeHtml(aff.summary)}</p>` : "<p>Compare cities in the app to generate a verdict.</p>"}
+      <strong>Relocation affordability score: ${aff ? `${aff.score}/100 — ${escapeHtml(aff.verdictLabel)}` : "Not calculated"}</strong>
+      <p class="section-explanation">Relocation affordability measures whether destination costs fit your scenario income. Your overall financial health score (${payload.data.health_score.overall}/100 — ${escapeHtml(payload.data.health_score.summary)}) measures savings habits and spending patterns. These are different scores and can both be high.</p>
+      ${aff?.tips[0] ? `<p class="section-explanation">${escapeHtml(aff.tips[0])}</p>` : ""}
+      ${aff ? `<p class="section-explanation">${escapeHtml(aff.summary)}</p>` : "<p class=\"section-explanation\">Compare cities in the app to generate a verdict.</p>"}
     </div>
 
     ${topRecommendationsTable(payload.topRecommendations, payload.formatDisplay)}
   `;
 
-  return pageShell(
-    1,
-    "Relocation overview",
-    `Your current city: ${payload.baseCity} · Best-fit city: ${dest}`,
-    body,
-    getReportPrivacyNotice(payload.data.privacy_notice)
-  );
+  return pageShell(1, "Relocation overview", body, getReportPrivacyNotice(payload.data.privacy_notice));
 }
 
 function categoryIndexTable(
@@ -215,7 +209,7 @@ function categoryIndexTable(
   formatReferenceCost: (amount: number) => string
 ) {
   if (!comparisons.length) {
-    return `<p class="muted">Run a city comparison in the app to populate category data.</p>`;
+    return `<p class="section-explanation">Run a city comparison in the app to populate category data.</p>`;
   }
 
   const totalUser = comparisons.reduce((sum, row) => sum + row.user_amount, 0);
@@ -258,7 +252,7 @@ function categoryIndexTable(
 
   return `
     <h2 class="section-title">Category comparison</h2>
-    <p class="section-note">${narrative}</p>
+    <p class="section-explanation">${narrative}</p>
     <table class="index-table">
       <thead>
         <tr>
@@ -295,7 +289,7 @@ function topRecommendationsTable(
   formatDisplay: (amount: number) => string
 ) {
   if (!recommendations.length) {
-    return `<p class="section-note">Run <strong>Find best-fit cities</strong> in the app to populate recommended destinations.</p>`;
+    return `<p class="section-explanation">Run <strong>Find best-fit cities</strong> in the app to populate recommended destinations.</p>`;
   }
 
   const rows = recommendations
@@ -313,14 +307,14 @@ function topRecommendationsTable(
 
   return `
     <h2 class="section-title">Top 3 recommended cities for your budget</h2>
-    <p class="section-note">Ranked by projected monthly balance based on your spending, income scenario, and lifestyle preferences.</p>
+    <p class="section-explanation">Ranked by projected monthly balance based on your spending, income scenario, and lifestyle preferences.</p>
     <table class="index-table compact">
       <thead>
         <tr>
           <th>City</th>
           <th>Est. cost</th>
           <th>Balance</th>
-          <th>Score</th>
+          <th>Relocation affordability score</th>
           <th>Verdict</th>
         </tr>
       </thead>
@@ -358,14 +352,14 @@ function cityRankTable(
 
   return `
     <h2 class="section-title">City rankings</h2>
-    <p class="section-note">Ranked by projected monthly balance — highest balance first.</p>
+    <p class="section-explanation">Ranked by projected monthly balance — highest balance first.</p>
     <table class="index-table compact">
       <thead>
         <tr>
           <th>City</th>
           <th>Est. cost</th>
           <th>Balance</th>
-          <th>Score</th>
+          <th>Relocation affordability score</th>
           <th>Verdict</th>
         </tr>
       </thead>
@@ -377,8 +371,10 @@ function buildPageTwo(payload: ReportPayload) {
   const comparisons = payload.primaryResult?.comparisons ?? [];
   const tip = payload.affordability?.tips[0];
   const compareCity = payload.primaryResult?.reference_city ?? payload.bestFitCity;
+  const relocationScore = payload.affordability?.score;
 
   const body = `
+    ${cityContextBlock(payload.baseCity, payload.bestFitCity)}
     ${categoryIndexTable(
       comparisons,
       compareCity,
@@ -387,8 +383,8 @@ function buildPageTwo(payload: ReportPayload) {
     )}
     ${cityRankTable(payload.citySummaries, payload.topRecommendations.slice(3), payload.formatDisplay)}
     <div class="readiness-strip">
-      <div><span>Health score</span><strong>${payload.data.health_score.overall}/100</strong></div>
-      <div><span>Move readiness</span><strong>${payload.readiness.moveReadinessPct.toFixed(0)}%</strong></div>
+      <div><span>Relocation affordability score</span><strong>${relocationScore !== undefined ? `${relocationScore}/100` : "—"}</strong></div>
+      <div><span>Move readiness score</span><strong>${payload.readiness.moveReadinessPct.toFixed(0)}%</strong></div>
       <div><span>Runway</span><strong>${payload.readiness.runwayMonths !== null ? `${payload.readiness.runwayMonths.toFixed(1)} mo` : "—"}</strong></div>
     </div>
     ${tip ? `<div class="tip-box">${escapeHtml(tip)}</div>` : ""}
@@ -397,7 +393,6 @@ function buildPageTwo(payload: ReportPayload) {
   return pageShell(
     2,
     "Category & city comparison",
-    `Your current city: ${payload.baseCity} · Best-fit city: ${payload.bestFitCity}`,
     body,
     getReportPrivacyNotice(payload.data.privacy_notice)
   );
@@ -405,7 +400,7 @@ function buildPageTwo(payload: ReportPayload) {
 
 export function buildRelocationReportHtml(payload: ReportPayload) {
   const body = `${buildPageOne(payload)}${buildPageTwo(payload)}`;
-  return buildReportDocument("Relocation Affordability Report", body);
+  return buildReportDocument(`${REPORT_LABEL} Report`, body);
 }
 
 function reportFilename(payload: ReportPayload) {

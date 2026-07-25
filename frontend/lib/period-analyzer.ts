@@ -145,6 +145,26 @@ export function comparePeriods(
   };
 }
 
+export type ConsecutivePeriodPair = {
+  previous: string;
+  current: string;
+  label: string;
+};
+
+export function buildConsecutivePeriodPairs(periods: string[]): ConsecutivePeriodPair[] {
+  const pairs: ConsecutivePeriodPair[] = [];
+  for (let index = 1; index < periods.length; index += 1) {
+    const previous = periods[index - 1];
+    const current = periods[index];
+    pairs.push({
+      previous,
+      current,
+      label: `${previous} → ${current}`,
+    });
+  }
+  return pairs;
+}
+
 export function explainCategoryChange(change: CategoryChange) {
   const direction = change.change_amount > 0 ? "increased" : "decreased";
   let text = `${change.category} (${change.transaction_type}) ${direction} by $${Math.abs(change.change_amount).toFixed(2)} (${change.change_pct >= 0 ? "+" : ""}${change.change_pct.toFixed(1)}%) from $${change.previous_total.toFixed(2)} to $${change.current_total.toFixed(2)}.`;

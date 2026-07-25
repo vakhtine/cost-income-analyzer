@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CategoryBenchmarkMatrix } from "@/components/CategoryBenchmarkMatrix";
 import { CityCompareGrid } from "@/components/CityCompareGrid";
 import { CityRecommender } from "@/components/CityRecommender";
@@ -105,6 +105,19 @@ export function RelocationExplorer({
   const periodDisplayLabel = isAveragePeriod ? "Average (all periods)" : locationPeriod;
   const selectedCities = [primaryCity, compareCity2, compareCity3].filter(Boolean);
   const userSpending = useMemo(() => getUserBenchmarkSpending(periodRows), [periodRows]);
+
+  useEffect(() => {
+    setCityResults([]);
+    setCompareNotice("");
+  }, [data.period_rows, locationPeriod]);
+
+  const scenarioIncomeNote = useMemo(() => {
+    const adjustment =
+      incomeChangePct !== 0
+        ? `${incomeChangePct >= 0 ? "+" : ""}${incomeChangePct}% ${settings.displayCurrency}`
+        : settings.displayCurrency;
+    return `${settings.incomeCurrency} → ${adjustment}`;
+  }, [incomeChangePct, settings.displayCurrency, settings.incomeCurrency]);
 
   const primaryResult = useMemo(
     () => cityResults.find((result) => result.reference_city === primaryCity) ?? null,
@@ -325,10 +338,19 @@ export function RelocationExplorer({
     }
   }
 
-  const buildCustomReportPayload = useCallback(async () => {
-    if (!periodAnalysis) {
+  const buildCustomReportPayload = useCallback(async (periodLabel: string) => {
+    const effectivePeriod = periodLabel || locationPeriod;
+    const effectiveAnalysis = isAveragePeriod
+      ? analyzeAveragePeriods(data.period_rows)
+      : data.period_analysis[effectivePeriod];
+
+    if (!effectiveAnalysis) {
       throw new Error("Select a valid analysis period first.");
     }
+
+    const effectiveRows = isAveragePeriod
+      ? buildAveragePeriodRows(data.period_rows)
+      : data.period_rows[effectivePeriod] ?? [];
 
     const recommendations =
       citySummaries.length > 0
@@ -343,9 +365,9 @@ export function RelocationExplorer({
             .sort((a, b) => b.projectedBalance - a.projectedBalance)
             .slice(0, 5)
         : await recommendCitiesForSpending(
-            periodRows,
-            periodAnalysis,
-            locationPeriod,
+            effectiveRows,
+            effectiveAnalysis,
+            effectivePeriod,
             householdSize,
             scenario,
             [baseCity],
@@ -358,19 +380,18 @@ export function RelocationExplorer({
 
     return {
       generatedAt: new Date().toLocaleString(),
-      periodLabel: locationPeriod,
+      periodLabel: effectivePeriod,
       baseCity,
       displayCurrency: settings.displayCurrency,
       data,
-      periodAnalysis,
+      periodAnalysis: effectiveAnalysis,
       recommendations,
       formatIncome,
       formatExpense,
     };
   }, [
-    periodAnalysis,
+    isAveragePeriod,
     citySummaries,
-    periodRows,
     locationPeriod,
     householdSize,
     scenario,
@@ -396,6 +417,7 @@ export function RelocationExplorer({
       {periodAnalysis && (
         <RelocationProfilePanel
           analysis={periodAnalysis}
+          periodLabel={periodDisplayLabel}
           defaultCity={primaryCity}
           householdSize={householdSize}
         />
@@ -481,11 +503,7 @@ export function RelocationExplorer({
                       (1 + incomeChangePct / 100)
                   )}
                 </strong>{" "}
-                ({settings.incomeCurrency} → {settings.displayCurrency}
-                {incomeChangePct !== 0
-                  ? `, ${incomeChangePct >= 0 ? "+" : ""}${incomeChangePct}%`
-                  : ""}
-                )
+                ({scenarioIncomeNote})
               </p>
             )}
           </div>
@@ -570,6 +588,7 @@ export function RelocationExplorer({
         <CategoryBenchmarkMatrix
           cities={cityResults}
           userSpending={userSpending}
+          periodLabel={periodDisplayLabel}
           onBenchmarkChange={handleBenchmarkChange}
           onResetCity={handleResetCity}
         />

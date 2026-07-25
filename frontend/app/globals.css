@@ -681,8 +681,34 @@ main {
   border-radius: 14px;
   border: 1px solid var(--border);
   background: #ffffff;
+}
+
+.excel-sanitizer-downloads {
+  display: grid;
+  gap: 12px;
   margin-top: 14px;
   margin-bottom: 16px;
+}
+
+.excel-sanitizer-downloads-heading {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.excel-sanitizer-file-name {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.sanitizer-file-icon-pdf {
+  color: #b91c1c;
+}
+
+.sanitizer-file-icon-docx {
+  color: #1d4ed8;
 }
 
 .excel-sanitizer-file-meta {
@@ -1340,6 +1366,23 @@ th {
   padding: 14px 16px;
 }
 
+.health-metrics-period-label {
+  display: block;
+  margin-bottom: 16px;
+  max-width: 320px;
+}
+
+.period-change-label {
+  display: block;
+  margin-bottom: 16px;
+  max-width: 420px;
+}
+
+.analyze-section-heading {
+  margin: 4px 0 0;
+  color: var(--primary-dark);
+}
+
 .analyze-period-label select,
 .review-period-label select {
   width: 100%;
@@ -1548,7 +1591,7 @@ textarea {
   display: grid;
   grid-template-columns: 220px 1fr;
   gap: 24px;
-  align-items: center;
+  align-items: start;
 }
 
 .advisor-summary {
@@ -1596,7 +1639,25 @@ textarea {
 
 .score-ring-label {
   margin-top: 10px;
-  font-weight: 600;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.verdict-score-wrap {
+  justify-self: end;
+}
+
+.verdict-score-ring {
+  --ring-color: var(--verdict-color);
+}
+
+.multi-city-source-note {
+  margin-top: 8px;
+}
+
+.multi-city-source-note strong {
+  color: var(--ink);
 }
 
 .breakdown-list {
@@ -2647,6 +2708,24 @@ textarea {
   background: linear-gradient(180deg, #ecfeff 0%, #ffffff 120px);
 }
 
+.custom-report-period-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.custom-report-period-label select {
+  max-width: 280px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-weight: 600;
+  background: #fff;
+}
+
 .custom-report-options {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -3081,6 +3160,13 @@ textarea {
   font-size: 0.95rem;
   color: var(--muted);
   font-weight: 600;
+}
+
+.purchasing-power-multiplier-note {
+  margin: 0 0 12px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 .purchasing-power-statement {

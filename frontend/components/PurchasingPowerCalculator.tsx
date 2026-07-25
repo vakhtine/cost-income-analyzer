@@ -168,6 +168,10 @@ export function PurchasingPowerCalculator({
             </strong>
             <span className="purchasing-power-badge-vs">vs. {destCity}</span>
           </div>
+          <p className="purchasing-power-multiplier-note">
+            Multiplier reflects city cost differences and adjusts for your selected display currency
+            (e.g. USD vs CAD). Dollar amounts above use live exchange rates.
+          </p>
           <p className="purchasing-power-statement">
             <strong>{displayAmount}</strong> in <strong>{sourceCity}</strong> on average has the
             same local purchasing power as{" "}

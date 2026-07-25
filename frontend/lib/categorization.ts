@@ -5,7 +5,19 @@ import {
   TRANSFER_CATEGORY_LABEL,
 } from "@/lib/constants";
 import { classifyTransactions } from "@/lib/parser";
+import {
+  reassignGlobalTransactionIds,
+  resolvePeriodForDate,
+} from "@/lib/period-utils";
 import { CategorizationFlag, Transaction } from "@/lib/types";
+
+type EditableInput = {
+  id: number;
+  merchant_name: string;
+  category: string;
+  amount: number;
+  date?: string;
+};
 
 export function isUnknownCategory(category: string) {
   return category.trim().toLowerCase() === "unknown";
@@ -109,21 +121,96 @@ export function rowsToEditable(rows: Transaction[]) {
   }));
 }
 
+function editableRowToRaw(row: EditableInput, periodName: string): RawRow | null {
+  if (!row.merchant_name.trim() || !row.category.trim() || row.amount === 0) {
+    return null;
+  }
+
+  return {
+    merchant_name: row.merchant_name.trim(),
+    category: row.category.trim(),
+    amount: Number(row.amount),
+    date: row.date || undefined,
+    period: periodName,
+  };
+}
+
 export function editableToTransactions(
-  rows: { id: number; merchant_name: string; category: string; amount: number; date?: string }[],
+  rows: EditableInput[],
   periodName: string,
   startId = 0
 ): Transaction[] {
-  const raw: RawRow[] = rows
-    .filter((row) => row.merchant_name.trim() && row.category.trim() && row.amount !== 0)
-    .map((row) => ({
-      merchant_name: row.merchant_name.trim(),
-      category: row.category.trim(),
-      amount: Number(row.amount),
-      date: row.date || undefined,
-      period: periodName,
-    }));
-  return classifyTransactions(raw, periodName, startId);
+  const validRows = rows
+    .map((row) => ({ row, raw: editableRowToRaw(row, periodName) }))
+    .filter((entry): entry is { row: EditableInput; raw: RawRow } => Boolean(entry.raw));
+
+  const transactions = classifyTransactions(
+    validRows.map((entry) => entry.raw),
+    periodName,
+    startId
+  );
+
+  return transactions.map((transaction, index) => ({
+    ...transaction,
+    id: validRows[index].row.id,
+  }));
+}
+
+export function mergeEditableRowsIntoPeriodRows(
+  editableRows: EditableInput[],
+  editPeriod: string,
+  existingPeriodRows: Record<string, Transaction[]>
+): Record<string, Transaction[]> {
+  const originalRows = existingPeriodRows[editPeriod] ?? [];
+  const originalIds = new Set(originalRows.map((row) => row.id));
+  const existingPeriods = Object.keys(existingPeriodRows);
+
+  const next: Record<string, Transaction[]> = {};
+  for (const [period, rows] of Object.entries(existingPeriodRows)) {
+    next[period] = rows.filter((row) => !originalIds.has(row.id));
+  }
+
+  const grouped = new Map<string, EditableInput[]>();
+  for (const row of editableRows) {
+    const raw = editableRowToRaw(row, editPeriod);
+    if (!raw) continue;
+
+    const targetPeriod = row.date?.trim()
+      ? resolvePeriodForDate(row.date, [...existingPeriods, ...Object.keys(next)], editPeriod)
+      : editPeriod;
+
+    if (!grouped.has(targetPeriod)) grouped.set(targetPeriod, []);
+    grouped.get(targetPeriod)!.push(row);
+  }
+
+  for (const [targetPeriod, rows] of grouped) {
+    const transactions = editableToTransactions(rows, targetPeriod);
+    next[targetPeriod] = [...(next[targetPeriod] ?? []), ...transactions];
+  }
+
+  return reassignGlobalTransactionIds(next, existingPeriods);
+}
+
+export function appendEditableRowToPeriodRows(
+  row: EditableInput,
+  fallbackPeriod: string,
+  existingPeriodRows: Record<string, Transaction[]>
+): Record<string, Transaction[]> {
+  const raw = editableRowToRaw(row, fallbackPeriod);
+  if (!raw) return existingPeriodRows;
+
+  const existingPeriods = Object.keys(existingPeriodRows);
+  const targetPeriod = row.date?.trim()
+    ? resolvePeriodForDate(row.date, existingPeriods, fallbackPeriod)
+    : fallbackPeriod;
+  const [transaction] = editableToTransactions([row], targetPeriod);
+
+  const next = {
+    ...existingPeriodRows,
+    [targetPeriod]: [...(existingPeriodRows[targetPeriod] ?? []), transaction],
+  };
+
+  return reassignGlobalTransactionIds(next, existingPeriods);
 }
 
 export function collectFlagFixes(

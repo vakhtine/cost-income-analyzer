@@ -95,6 +95,8 @@ function healthSummary(score: number) {
   return "Needs attention";
 }
 
+export { healthSummary };
+
 function formatMoney(value: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

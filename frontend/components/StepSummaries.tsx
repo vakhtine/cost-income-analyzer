@@ -1,8 +1,15 @@
-import { AnalyzeResponse } from "@/lib/types";
-import { formatCurrency } from "@/lib/utils";
+"use client";
+
+import { useCurrency } from "@/lib/currency-context";
+import { AnalyzeResponse, PeriodAnalysis } from "@/lib/types";
 
 type Props = {
   data: AnalyzeResponse;
+};
+
+type SnapshotProps = {
+  analysis: PeriodAnalysis;
+  periodLabel: string;
 };
 
 export function CleanStepSummary({ data }: Props) {
@@ -37,26 +44,25 @@ export function CleanStepSummary({ data }: Props) {
   );
 }
 
-export function AnalyzeStepSummary({ data }: Props) {
-  const latest = data.periods[data.periods.length - 1];
-  const analysis = data.period_analysis[latest];
+export function AnalyzeStepSummary({ analysis, periodLabel }: SnapshotProps) {
+  const { formatIncome, formatExpense } = useCurrency();
 
   return (
     <section className="step-summary card">
-      <h3>Your financial snapshot — {latest}</h3>
+      <h3>Your financial snapshot — {periodLabel}</h3>
       <div className="step-summary-grid">
         <div className="step-summary-item">
           <span>Monthly income</span>
-          <strong>{formatCurrency(analysis.total_income)}</strong>
+          <strong>{formatIncome(analysis.total_income)}</strong>
         </div>
         <div className="step-summary-item">
           <span>Monthly expenses</span>
-          <strong>{formatCurrency(analysis.total_expenses)}</strong>
+          <strong>{formatExpense(analysis.total_expenses)}</strong>
         </div>
         <div className="step-summary-item">
           <span>Net savings</span>
           <strong className={analysis.net_savings >= 0 ? "positive" : "negative"}>
-            {formatCurrency(analysis.net_savings)}
+            {formatIncome(analysis.net_savings)}
           </strong>
         </div>
         <div className="step-summary-item">

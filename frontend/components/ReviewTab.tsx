@@ -23,9 +23,13 @@ import {
   getMerchantCategoryOptions,
   getUnknownMerchants,
 
+  mergeEditableRowsIntoPeriodRows,
+
   rowsToEditable,
 
 } from "@/lib/categorization";
+
+import { resolvePeriodForDate } from "@/lib/period-utils";
 
 import { resolveTransactionType, TRANSFER_CATEGORY_LABEL } from "@/lib/constants";
 
@@ -146,9 +150,13 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
   useEffect(() => {
 
-    setEditPeriod(data.periods[data.periods.length - 1]);
+    if (!data.periods.includes(editPeriod)) {
 
-  }, [data.periods]);
+      setEditPeriod(data.periods[data.periods.length - 1]);
+
+    }
+
+  }, [data.periods, editPeriod]);
 
 
 
@@ -272,9 +280,13 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
 
 
-    const updatedRows = editableToTransactions(editableRows, editPeriod);
+    const validRows = editableRows.filter(
 
-    if (!updatedRows.length) {
+      (row) => row.merchant_name.trim() && row.category.trim() && row.amount !== 0
+
+    );
+
+    if (!validRows.length) {
 
       showStatus({
 
@@ -292,13 +304,7 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
 
 
-    const next = {
-
-      ...data.period_rows,
-
-      [editPeriod]: updatedRows,
-
-    };
+    const next = mergeEditableRowsIntoPeriodRows(editableRows, editPeriod, data.period_rows);
 
     const rebuilt = rebuildAnalyzeResponse(next);
 
@@ -314,11 +320,22 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
 
 
-    const counts = countRowTypes(savedRows);
-
-    const skipped = editableRows.length - updatedRows.length;
+    const counts = countRowTypes(validRows);
+    const skipped = editableRows.length - validRows.length;
 
     const analysis = rebuilt.period_analysis[editPeriod];
+
+    const routedPeriods = [...new Set(
+
+      validRows
+
+        .filter((row) => row.date.trim())
+
+        .map((row) => resolvePeriodForDate(row.date, rebuilt.periods, editPeriod))
+
+        .filter((period) => period !== editPeriod)
+
+    )];
 
 
 
@@ -328,7 +345,7 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
       message: `Saved changes for ${editPeriod}.`,
 
-      detail: `${counts.total} record${counts.total === 1 ? "" : "s"} saved (${counts.income} income, ${counts.expense} expense${counts.transfer ? `, ${counts.transfer} transfer` : ""}). Income ${formatCurrency(analysis.total_income)}, expenses ${formatCurrency(analysis.total_expenses)}.${skipped > 0 ? ` ${skipped} incomplete row${skipped === 1 ? " was" : "s were"} skipped.` : ""} Dashboard and relocation analysis updated.`,
+      detail: `${counts.total} record${counts.total === 1 ? "" : "s"} saved (${counts.income} income, ${counts.expense} expense${counts.transfer ? `, ${counts.transfer} transfer` : ""}). Income ${formatCurrency(analysis?.total_income ?? 0)}, expenses ${formatCurrency(analysis?.total_expenses ?? 0)}.${skipped > 0 ? ` ${skipped} incomplete row${skipped === 1 ? " was" : "s were"} skipped.` : ""}${routedPeriods.length ? ` Rows with dates in ${routedPeriods.join(", ")} were assigned to those periods.` : ""} Dashboard and relocation analysis updated.`,
 
     });
 
@@ -608,7 +625,11 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
           Rows load automatically for the selected period. Add income (Salary, Pension),
 
-          expenses (Rent, Groceries), or transfers, then save changes.
+          expenses (Rent, Groceries), or transfers, then save changes. If a row has a date,
+
+          it is assigned to that month&apos;s period automatically (for example, rent dated
+
+          29/6/26 goes to June even while you are editing another period).
 
         </p>
 

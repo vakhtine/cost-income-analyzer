@@ -108,13 +108,26 @@ function estimateRentMonthly(items: PriceItem[]) {
   return round2(center?.price_usd ?? outside?.price_usd ?? 0);
 }
 
-function estimateTransportMonthly(items: PriceItem[]) {
+function estimateTransitMonthly(items: PriceItem[]) {
   const pass = findItem(items, ["monthly", "transit", "pass"]);
   if (pass) return round2(pass.price_usd);
 
+  const oneWay = findItem(items, [
+    "one-way",
+    "single ticket",
+    "bus ticket",
+    "metro ticket",
+    "tram ticket",
+    "local transport",
+  ]);
+  if (oneWay) return round2(oneWay.price_usd * 44);
+
+  return 0;
+}
+
+function estimateGasMonthly(items: PriceItem[]) {
   const gasoline = findItem(items, ["gasoline", "petrol", "fuel"]);
   if (gasoline) return round2(gasoline.price_usd * 40);
-
   return 0;
 }
 
@@ -123,7 +136,8 @@ export function buildMonthlyBenchmarks(items: PriceItem[]) {
     rent: estimateRentMonthly(items),
     groceries: estimateGroceriesMonthly(items),
     restaurants: estimateRestaurantsMonthly(items),
-    transport: estimateTransportMonthly(items),
+    transport: estimateTransitMonthly(items),
+    gas: estimateGasMonthly(items),
     utilities: estimateUtilitiesMonthly(items),
     entertainment: estimateEntertainmentMonthly(items),
   };
