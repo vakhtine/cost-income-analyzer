@@ -1,7 +1,7 @@
 "use client";
 
 import { CategoryIconGlyph } from "@/components/CategoryIconGlyphs";
-import { getCategoryMeta } from "@/lib/category-icons";
+import { formatCategoryDisplayName, getCategoryMeta } from "@/lib/category-icons";
 
 type Props = {
   category: string;
@@ -28,6 +28,30 @@ export function CategoryIcon({
     >
       <CategoryIconGlyph iconId={iconId} className="category-icon-glyph" />
       {showLabel && <span className="category-icon-label">{category}</span>}
+    </span>
+  );
+}
+
+export function CategoryLabel({
+  category,
+  iconSize = 42,
+  className = "",
+  topMerchants,
+}: {
+  category: string;
+  iconSize?: number;
+  className?: string;
+  topMerchants?: string[];
+}) {
+  return (
+    <span className={`category-label-with-icon ${className}`.trim()}>
+      <CategoryIcon category={category} size={iconSize} />
+      <span className="category-label-text-block">
+        <span>{formatCategoryDisplayName(category)}</span>
+        {topMerchants && topMerchants.length > 0 ? (
+          <span className="category-top-merchants">{topMerchants.join(" · ")}</span>
+        ) : null}
+      </span>
     </span>
   );
 }

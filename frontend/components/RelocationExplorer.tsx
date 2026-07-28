@@ -25,6 +25,7 @@ import {
   AVERAGE_PERIOD_LABEL,
   analyzeAveragePeriods,
   buildAveragePeriodRows,
+  resolvePeriodReportSelection,
 } from "@/lib/rebuild";
 import { loadRelocationProfile, calculateRelocationReadiness } from "@/lib/relocation-profile";
 import {
@@ -33,6 +34,7 @@ import {
   computeScenarioAffordability,
 } from "@/lib/relocation-scenario";
 import { AffordabilityCurrencyContext } from "@/lib/relocation-affordability";
+import { combinePeriodRowsInRange } from "@/lib/spending-metrics";
 import { AnalyzeResponse, LocationCompareResult } from "@/lib/types";
 import { LIFESTYLE_OPTIONS, LifestyleLevel } from "@/lib/wizard";
 
@@ -92,8 +94,17 @@ export function RelocationExplorer({
   const [loading, setLoading] = useState(false);
   const [compareNotice, setCompareNotice] = useState("");
   const [topRecommendations, setTopRecommendations] = useState<CityRecommendation[]>([]);
+  const [profilePeriod, setProfilePeriod] = useState(locationPeriod);
+  const [spendingPeriod, setSpendingPeriod] = useState(locationPeriod);
   const { formatIncome, formatExpense, formatUsd, formatDisplay, convertIncome, settings, rates } =
     useCurrency();
+
+  const profileAnalysis = data.period_analysis[profilePeriod] ?? null;
+  const spendingRows = data.period_rows[spendingPeriod] ?? [];
+  const spendingUserSpending = useMemo(
+    () => getUserBenchmarkSpending(spendingRows),
+    [spendingRows]
+  );
 
   const isAveragePeriod = locationPeriod === AVERAGE_PERIOD_LABEL;
   const periodRows = isAveragePeriod
@@ -104,7 +115,6 @@ export function RelocationExplorer({
     : data.period_analysis[locationPeriod];
   const periodDisplayLabel = isAveragePeriod ? "Average (all periods)" : locationPeriod;
   const selectedCities = [primaryCity, compareCity2, compareCity3].filter(Boolean);
-  const userSpending = useMemo(() => getUserBenchmarkSpending(periodRows), [periodRows]);
 
   useEffect(() => {
     setCityResults([]);
@@ -175,10 +185,34 @@ export function RelocationExplorer({
     return buildCitySummaries(periodAnalysis, cityResults, scenario, currencyContext);
   }, [periodAnalysis, cityResults, scenario, currencyContext]);
 
-  const buildReportPayload = useCallback(async () => {
+  const bestFitFromComparison = useMemo(() => {
+    if (!citySummaries.length) return null;
+    return [...citySummaries].sort((a, b) => {
+      const balanceDiff =
+        b.affordability.projectedBalance - a.affordability.projectedBalance;
+      if (balanceDiff !== 0) return balanceDiff;
+      return (
+        a.affordability.displayReferenceCost - b.affordability.displayReferenceCost
+      );
+    })[0];
+  }, [citySummaries]);
+
+  const verdictAffordability = bestFitFromComparison?.affordability ?? primaryAffordability;
+  const verdictResult = bestFitFromComparison?.result ?? primaryResult;
+
+  const buildReportPayload = useCallback(async (exportPeriod: string) => {
     const profile = loadRelocationProfile();
-    const readiness = periodAnalysis
-      ? calculateRelocationReadiness(periodAnalysis, profile.savingsBalance)
+    const isExportAverage = exportPeriod === AVERAGE_PERIOD_LABEL;
+    const exportPeriodAnalysis = isExportAverage
+      ? analyzeAveragePeriods(data.period_rows)
+      : data.period_analysis[exportPeriod] ?? periodAnalysis;
+    const exportPeriodRows = isExportAverage
+      ? buildAveragePeriodRows(data.period_rows)
+      : data.period_rows[exportPeriod] ?? periodRows;
+    const exportPeriodLabel = isExportAverage ? "Average (all periods)" : exportPeriod;
+
+    const readiness = exportPeriodAnalysis
+      ? calculateRelocationReadiness(exportPeriodAnalysis, profile.savingsBalance)
       : {
           runwayMonths: null,
           runwayLabel: "",
@@ -190,12 +224,12 @@ export function RelocationExplorer({
     const lifestyleOption = LIFESTYLE_OPTIONS.find((item) => item.id === lifestyle);
 
     let recommendations = topRecommendations;
-    if (!recommendations.length && periodAnalysis) {
+    if (!recommendations.length && exportPeriodAnalysis) {
       const rankedCities = selectedCities.filter((city) => city && city !== baseCity);
       recommendations = await recommendCitiesForSpending(
-        periodRows,
-        periodAnalysis,
-        locationPeriod,
+        exportPeriodRows,
+        exportPeriodAnalysis,
+        exportPeriodLabel,
         householdSize,
         scenario,
         [baseCity],
@@ -205,15 +239,19 @@ export function RelocationExplorer({
       );
     }
 
-    const bestFitCity = recommendations[0]?.city ?? primaryCity;
-    const bestFitSummary = citySummaries.find((entry) => entry.city === bestFitCity);
+    const bestFitCity =
+      bestFitFromComparison?.city ?? recommendations[0]?.city ?? primaryCity;
+    const bestFitSummary =
+      citySummaries.find((entry) => entry.city === bestFitCity) ?? bestFitFromComparison;
     const bestFitResult =
-      cityResults.find((result) => result.reference_city === bestFitCity) ?? primaryResult;
+      cityResults.find((result) => result.reference_city === bestFitCity) ??
+      bestFitFromComparison?.result ??
+      primaryResult;
     const reportAffordability =
       bestFitSummary?.affordability ??
-      (bestFitResult && periodAnalysis
+      (bestFitResult && exportPeriodAnalysis
         ? computeScenarioAffordability(
-            periodAnalysis,
+            exportPeriodAnalysis,
             bestFitResult,
             scenario,
             currencyContext
@@ -225,7 +263,7 @@ export function RelocationExplorer({
 
     return {
       generatedAt: new Date().toLocaleString(),
-      periodLabel: locationPeriod,
+      periodLabel: exportPeriodLabel,
       baseCity,
       primaryCity,
       bestFitCity,
@@ -253,6 +291,7 @@ export function RelocationExplorer({
         verdictLabel: entry.verdictLabel,
       })),
       primaryResult: reportPrimaryResult,
+      userBenchmarkSpending: getUserBenchmarkSpending(exportPeriodRows),
       formatDisplay,
       formatExpense,
       formatReferenceCost: formatUsd,
@@ -268,6 +307,7 @@ export function RelocationExplorer({
     primaryAffordability,
     periodAnalysis,
     citySummaries,
+    bestFitFromComparison,
     adjustedPrimaryResult,
     topRecommendations,
     periodRows,
@@ -338,19 +378,29 @@ export function RelocationExplorer({
     }
   }
 
-  const buildCustomReportPayload = useCallback(async (periodLabel: string) => {
-    const effectivePeriod = periodLabel || locationPeriod;
-    const effectiveAnalysis = isAveragePeriod
-      ? analyzeAveragePeriods(data.period_rows)
-      : data.period_analysis[effectivePeriod];
+  const buildCustomReportPayload = useCallback(async (selection: import("@/lib/types").PeriodReportSelection) => {
+    const { periodLabel, periodAnalysis } = resolvePeriodReportSelection(
+      data.period_rows,
+      data.periods,
+      selection
+    );
 
-    if (!effectiveAnalysis) {
-      throw new Error("Select a valid analysis period first.");
-    }
-
+    const effectivePeriod =
+      selection.mode === "single" ? selection.period : selection.end;
     const effectiveRows = isAveragePeriod
       ? buildAveragePeriodRows(data.period_rows)
-      : data.period_rows[effectivePeriod] ?? [];
+      : selection.mode === "range"
+        ? combinePeriodRowsInRange(
+            data.period_rows,
+            data.periods,
+            selection.start,
+            selection.end
+          )
+        : data.period_rows[effectivePeriod] ?? [];
+
+    const effectiveAnalysis = isAveragePeriod
+      ? analyzeAveragePeriods(data.period_rows)
+      : periodAnalysis;
 
     const recommendations =
       citySummaries.length > 0
@@ -380,7 +430,8 @@ export function RelocationExplorer({
 
     return {
       generatedAt: new Date().toLocaleString(),
-      periodLabel: effectivePeriod,
+      periodLabel,
+      periodSelection: selection,
       baseCity,
       displayCurrency: settings.displayCurrency,
       data,
@@ -414,10 +465,12 @@ export function RelocationExplorer({
         householdSize={householdSize}
       />
 
-      {periodAnalysis && (
+      {profileAnalysis && (
         <RelocationProfilePanel
-          analysis={periodAnalysis}
-          periodLabel={periodDisplayLabel}
+          analysis={profileAnalysis}
+          periods={data.periods}
+          profilePeriod={profilePeriod}
+          onProfilePeriodChange={setProfilePeriod}
           defaultCity={primaryCity}
           householdSize={householdSize}
         />
@@ -587,18 +640,20 @@ export function RelocationExplorer({
       {cityResults.length > 0 && (
         <CategoryBenchmarkMatrix
           cities={cityResults}
-          userSpending={userSpending}
-          periodLabel={periodDisplayLabel}
+          userSpending={spendingUserSpending}
+          periods={data.periods}
+          spendingPeriod={spendingPeriod}
+          onSpendingPeriodChange={setSpendingPeriod}
           onBenchmarkChange={handleBenchmarkChange}
           onResetCity={handleResetCity}
         />
       )}
 
-      {primaryAffordability && primaryResult && (
+      {verdictAffordability && verdictResult && (
         <RelocationVerdict
-          affordability={primaryAffordability}
-          referenceCity={primaryResult.reference_city}
-          periodLabel={primaryResult.period_label}
+          affordability={verdictAffordability}
+          referenceCity={verdictResult.reference_city}
+          periodLabel={verdictResult.period_label}
           formatBalance={formatDisplay}
           financialHealthScore={data.health_score.overall}
         />
@@ -620,6 +675,8 @@ export function RelocationExplorer({
       )}
 
       <RelocationReportExport
+        periods={data.periods}
+        defaultPeriod={locationPeriod}
         buildPayload={buildReportPayload}
         disabled={!periodAnalysis}
       />
@@ -627,6 +684,8 @@ export function RelocationExplorer({
       <CustomReportExport
         buildPayload={buildCustomReportPayload}
         disabled={!periodAnalysis}
+        periods={data.periods}
+        requirePeriodSelection
       />
 
       {adjustedPrimaryResult && (

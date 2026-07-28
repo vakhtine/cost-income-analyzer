@@ -4,28 +4,37 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { FinancialHealthPanel, PeriodChangePanel } from "@/components/AdvisorView";
 import { CurrencySettingsPanel } from "@/components/CurrencySettingsPanel";
 import { CustomReportExport } from "@/components/CustomReportExport";
-import { DashboardView, InsightsPanel } from "@/components/DashboardView";
+import { DashboardView } from "@/components/DashboardView";
 import { HeroSection } from "@/components/HeroSection";
 import { IncomeEntryPrompt } from "@/components/IncomeEntryPrompt";
 import { MultiPeriodView } from "@/components/MultiPeriodView";
+import { PeriodSelect } from "@/components/PeriodSelect";
 import { RelocationExplorer } from "@/components/RelocationExplorer";
 import { ReviewTab } from "@/components/ReviewTab";
-import { AnalyzeStepSummary, CleanStepSummary } from "@/components/StepSummaries";
+import { CleanStepSummary } from "@/components/StepSummaries";
+import { PeriodExclusionPanel } from "@/components/PeriodExclusionPanel";
+import { SpendingAnalyticsPanel } from "@/components/SpendingAnalyticsPanel";
 import { UploadZone } from "@/components/UploadZone";
 import { WizardProgress } from "@/components/WizardProgress";
 import { analyzeFilesInBrowser } from "@/lib/analyze-client";
 import { SUPPORTED_REFERENCE_CITIES } from "@/lib/city-data";
+import { analyzeTransactions } from "@/lib/analyzer";
 import {
   AVERAGE_PERIOD_LABEL,
   analyzeAveragePeriods,
   analyzeCombinedPeriods,
 } from "@/lib/rebuild";
+import { resolvePeriodReportSelection } from "@/lib/rebuild";
 import { findRelocatePeriod } from "@/lib/relocate-period";
+import { countUnknownTransactions, hasUnknownTransactionsInData } from "@/lib/categorization";
 import { useCurrency } from "@/lib/currency-context";
 import { AnalyzeResponse } from "@/lib/types";
+import { applyExcludedPeriods } from "@/lib/period-exclusion";
 import { WizardStep } from "@/lib/wizard";
+
 export default function HomePage() {
   const [data, setData] = useState<AnalyzeResponse | null>(null);
+  const [excludedPeriods, setExcludedPeriods] = useState<string[]>([]);
   const [wizardStep, setWizardStep] = useState<WizardStep>("upload");
   const [selectedPeriod, setSelectedPeriod] = useState<string>("");
   const [locationPeriod, setLocationPeriod] = useState<string>("");
@@ -37,40 +46,48 @@ export default function HomePage() {
   const isAllPeriods = selectedPeriod === "All periods";
   const isAveragePeriod = selectedPeriod === AVERAGE_PERIOD_LABEL;
 
+  const analysisData = useMemo(() => {
+    if (!data) return null;
+    const validExcluded = excludedPeriods.filter((period) => data.periods.includes(period));
+    return applyExcludedPeriods(data, validExcluded);
+  }, [data, excludedPeriods]);
+
   useEffect(() => {
     if (!data) return;
-    const latest = data.periods[data.periods.length - 1];
+    const activePeriods = analysisData?.periods ?? data.periods;
+    const latest = activePeriods[activePeriods.length - 1];
     if (
       !locationPeriod ||
-      (!data.periods.includes(locationPeriod) && locationPeriod !== AVERAGE_PERIOD_LABEL)
+      (!activePeriods.includes(locationPeriod) && locationPeriod !== AVERAGE_PERIOD_LABEL)
     ) {
       setLocationPeriod(latest);
     }
     if (
       !selectedPeriod ||
-      (!data.periods.includes(selectedPeriod) &&
+      (!activePeriods.includes(selectedPeriod) &&
         selectedPeriod !== AVERAGE_PERIOD_LABEL &&
         selectedPeriod !== "All periods")
     ) {
       setSelectedPeriod(latest);
     }
-  }, [data, locationPeriod, selectedPeriod]);
+  }, [data, analysisData, locationPeriod, selectedPeriod]);
 
   const singleAnalysis = useMemo(() => {
-    if (!data || isAllPeriods || isAveragePeriod) return null;
-    const period = selectedPeriod || data.periods[data.periods.length - 1];
-    return data.period_analysis[period] ?? null;
-  }, [data, selectedPeriod, isAllPeriods, isAveragePeriod]);
+    if (!analysisData || isAllPeriods || isAveragePeriod) return null;
+    const period = selectedPeriod || analysisData.periods[analysisData.periods.length - 1];
+    const rows = analysisData.period_rows[period] ?? [];
+    return analyzeTransactions(rows);
+  }, [analysisData, selectedPeriod, isAllPeriods, isAveragePeriod]);
 
   const combinedAnalysis = useMemo(() => {
-    if (!data || !isAllPeriods) return null;
-    return analyzeCombinedPeriods(data.period_rows);
-  }, [data, isAllPeriods]);
+    if (!analysisData || !isAllPeriods) return null;
+    return analyzeCombinedPeriods(analysisData.period_rows);
+  }, [analysisData, isAllPeriods]);
 
   const averageAnalysis = useMemo(() => {
-    if (!data || !isAveragePeriod) return null;
-    return analyzeAveragePeriods(data.period_rows);
-  }, [data, isAveragePeriod]);
+    if (!analysisData || !isAveragePeriod) return null;
+    return analyzeAveragePeriods(analysisData.period_rows);
+  }, [analysisData, isAveragePeriod]);
 
   const activeAnalysis = isAllPeriods
     ? combinedAnalysis
@@ -82,7 +99,7 @@ export default function HomePage() {
     ? "All periods"
     : isAveragePeriod
       ? "Average (all periods)"
-      : selectedPeriod || data?.periods[data.periods.length - 1] || "";
+      : selectedPeriod || analysisData?.periods[analysisData.periods.length - 1] || "";
 
   const dashboardHeading = isAllPeriods
     ? "Combined totals — all periods"
@@ -93,17 +110,22 @@ export default function HomePage() {
   const incomeEntryPeriodLabel =
     !isAllPeriods && !isAveragePeriod && selectedPeriod
       ? selectedPeriod
-      : data?.periods[data.periods.length - 1] ?? "";
+      : analysisData?.periods[analysisData.periods.length - 1] ?? "";
 
   const cleanIncomePeriodLabel = data?.periods[data.periods.length - 1] ?? "";
+  const hasUnknownTransactions = data ? hasUnknownTransactionsInData(data) : false;
+  const hasMultiplePeriods = Boolean(data && data.periods.length > 1);
+  const unknownTransactionCount = data
+    ? countUnknownTransactions(Object.values(data.period_rows).flat())
+    : 0;
 
-  const updateData = useCallback(
-    (next: AnalyzeResponse) => {
-      setData(next);
-      setLocationPeriod((current) => findRelocatePeriod(next, current));
-    },
-    []
-  );
+  const updateData = useCallback((next: AnalyzeResponse, savedPeriod?: string) => {
+    setData(next);
+    if (savedPeriod && next.periods.includes(savedPeriod)) {
+      setSelectedPeriod(savedPeriod);
+      setLocationPeriod(savedPeriod);
+    }
+  }, []);
 
   async function handleUpload(files: File[]) {    setLoading(true);
     setError("");
@@ -123,8 +145,23 @@ export default function HomePage() {
     }
   }
 
+  function resolveAnalyzeEntry() {
+    if (!data) return;
+    if (data.periods.length > 1) {
+      setWizardStep("exclude-periods");
+      return;
+    }
+    setWizardStep("analyze");
+  }
+
   function goToStep(step: WizardStep) {
     if (!data && step !== "upload") return;
+    if (step === "review") {
+      if (!data || !hasUnknownTransactionsInData(data)) {
+        resolveAnalyzeEntry();
+        return;
+      }
+    }
     if (step === "relocate" && data) {
       const relocatePeriod =
         !isAllPeriods && !isAveragePeriod && selectedPeriod
@@ -157,6 +194,8 @@ export default function HomePage() {
           <WizardProgress
             currentStep={wizardStep}
             uploadComplete={Boolean(data)}
+            hasUnknownTransactions={hasUnknownTransactions}
+            hasMultiplePeriods={hasMultiplePeriods}
             onStepClick={goToStep}
           />
 
@@ -166,84 +205,161 @@ export default function HomePage() {
               <IncomeEntryPrompt
                 data={data}
                 periodLabel={cleanIncomePeriodLabel}
+                periods={data.periods}
                 onUpdate={updateData}
                 context="clean"
               />
-              <ReviewTab data={data} onUpdate={updateData} />              <div className="wizard-nav">
-                <button className="tab" onClick={() => goToStep("upload")}>
-                  Back
+              <ReviewTab data={data} onUpdate={updateData} showUnknownSection={false} />
+              {hasUnknownTransactions ? (
+                <section className="card clean-review-prompt">
+                  <h3>Categorize unknown or uncategorized expenses?</h3>
+                  <p>
+                    You have <strong>{unknownTransactionCount}</strong> expense
+                    {unknownTransactionCount === 1 ? "" : "s"} labeled Unknown or Uncategorized.
+                    Assigning them to rent, groceries, and other categories improves your health
+                    score, charts, and relocation reports.
+                  </p>
+                  <p className="clean-review-prompt-note">
+                    Would you like to review and categorize these transactions before continuing?
+                  </p>
+                  <div className="wizard-nav">
+                    <button className="tab" onClick={() => goToStep("upload")}>
+                      Back
+                    </button>
+                    <button className="tab" onClick={resolveAnalyzeEntry}>
+                      Skip for now
+                    </button>
+                    <button className="tab active" onClick={() => goToStep("review")}>
+                      Review &amp; categorize
+                    </button>
+                  </div>
+                </section>
+              ) : (
+                <div className="wizard-nav">
+                  <button className="tab" onClick={() => goToStep("upload")}>
+                    Back
+                  </button>
+                  <button className="tab active" onClick={resolveAnalyzeEntry}>
+                    Continue to Analyze
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {wizardStep === "review" && (
+            <div className="stack">
+              <section className="card">
+                <h3>Review unknown transactions</h3>
+                <p>
+                  Assign each unknown or uncategorized merchant to an expense category already used
+                  in your file, or mark it as a transfer between your own accounts.
+                </p>
+              </section>
+              <ReviewTab
+                data={data}
+                onUpdate={updateData}
+                showUnknownSection
+                showEditorSection={false}
+              />
+              <div className="wizard-nav">
+                <button className="tab" onClick={() => goToStep("clean")}>
+                  Back to Clean
                 </button>
-                <button className="tab active" onClick={() => goToStep("analyze")}>
+                <button className="tab active" onClick={resolveAnalyzeEntry}>
                   Continue to Analyze
                 </button>
               </div>
             </div>
           )}
 
-          {wizardStep === "analyze" && (
+          {wizardStep === "exclude-periods" && data && (
+            <PeriodExclusionPanel
+              periods={data.periods}
+              excludedPeriods={excludedPeriods}
+              onExcludedChange={setExcludedPeriods}
+              onBack={() => goToStep(hasUnknownTransactions ? "review" : "clean")}
+              onContinue={() => goToStep("analyze")}
+            />
+          )}
+
+          {wizardStep === "analyze" && analysisData && (
             <div className="stack">
               <CurrencySettingsPanel />
-              <FinancialHealthPanel data={data} />
 
-              <section className="card analyze-period-bar">
-                <label className="analyze-period-label">
-                  Period
-                  <select
-                    value={selectedPeriod}
-                    onChange={(event) => setSelectedPeriod(event.target.value)}
-                  >
-                    {data.periods.map((period) => (
-                      <option key={period} value={period}>
-                        {period}
-                      </option>
-                    ))}
-                    {data.periods.length > 1 && (
-                      <>
-                        <option value="All periods">All periods</option>
-                        <option value={AVERAGE_PERIOD_LABEL}>Average (all periods)</option>
-                      </>
-                    )}
-                  </select>
-                </label>
-              </section>
+              {excludedPeriods.length > 0 ? (
+                <section className="card period-exclusion-summary">
+                  <p>
+                    <strong>{excludedPeriods.length}</strong> period
+                    {excludedPeriods.length === 1 ? "" : "s"} excluded from analysis:{" "}
+                    {excludedPeriods.join(", ")}.{" "}
+                    <button type="button" className="link-button" onClick={() => goToStep("exclude-periods")}>
+                      Change
+                    </button>
+                  </p>
+                </section>
+              ) : null}
+
+              <FinancialHealthPanel
+                data={analysisData}
+                selectedPeriod={selectedPeriod}
+                onPeriodChange={setSelectedPeriod}
+                insightsAnalysis={activeAnalysis}
+              />
+              <SpendingAnalyticsPanel
+                data={analysisData}
+                selectedPeriod={selectedPeriod}
+                onPeriodChange={setSelectedPeriod}
+              />
 
               {activeAnalysis && (
                 <>
-                  <AnalyzeStepSummary analysis={activeAnalysis} periodLabel={activePeriodLabel} />
-                  <InsightsPanel analysis={activeAnalysis} />
-                  <h3 className="analyze-section-heading">{dashboardHeading}</h3>
+                  <div className="period-details-header">
+                    <PeriodSelect
+                      periods={analysisData.periods}
+                      value={selectedPeriod}
+                      onChange={setSelectedPeriod}
+                    />
+                    <h3 className="analyze-section-heading">{dashboardHeading}</h3>
+                  </div>
                   <DashboardView
                     analysis={activeAnalysis}
                     showCharts
-                    data={data}
+                    data={analysisData}
                     periodLabel={incomeEntryPeriodLabel}
+                    periods={analysisData.periods}
+                    selectedPeriod={selectedPeriod}
+                    onPeriodChange={setSelectedPeriod}
                     onUpdate={updateData}
                   />
                 </>
               )}
-              <CustomReportExport                periods={data.periods}
+              <CustomReportExport
+                periods={analysisData.periods}
                 requirePeriodSelection
                 availableTypes={["expenses-by-category", "financial-health"]}
-                buildPayload={(periodLabel) => {
-                  const analysis = data.period_analysis[periodLabel];
-                  if (!analysis) {
-                    throw new Error(`No analysis found for period ${periodLabel}.`);
-                  }
+                buildPayload={(selection) => {
+                  const { periodLabel, periodAnalysis } = resolvePeriodReportSelection(
+                    analysisData.period_rows,
+                    analysisData.periods,
+                    selection
+                  );
                   return {
                     generatedAt: new Date().toLocaleString(),
                     periodLabel,
+                    periodSelection: selection,
                     displayCurrency: settings.displayCurrency,
-                    data,
-                    periodAnalysis: analysis,
+                    data: analysisData,
+                    periodAnalysis,
                     recommendations: [],
                     formatIncome,
                     formatExpense,
                   };
                 }}
               />
-              <PeriodChangePanel data={data} />              {data.periods.length > 1 && <MultiPeriodView data={data} />}
+              <PeriodChangePanel data={analysisData} />              {analysisData.periods.length > 1 && <MultiPeriodView data={analysisData} />}
               <div className="wizard-nav">
-                <button className="tab" onClick={() => goToStep("clean")}>
+                <button className="tab" onClick={() => goToStep(hasUnknownTransactions ? "review" : "clean")}>
                   Back
                 </button>
                 <button className="tab active" onClick={() => goToStep("relocate")}>
@@ -253,10 +369,10 @@ export default function HomePage() {
             </div>
           )}
 
-          {wizardStep === "relocate" && (
+          {wizardStep === "relocate" && analysisData && (
             <div className="stack">
               <RelocationExplorer
-                data={data}
+                data={analysisData}
                 baseCity={baseCity}
                 onBaseCityChange={setBaseCity}
                 locationPeriod={locationPeriod}

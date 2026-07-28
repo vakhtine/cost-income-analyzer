@@ -1,17 +1,28 @@
-import { WIZARD_STEPS, WizardStep } from "@/lib/wizard";
+"use client";
+
+import { visibleWizardSteps, WizardStep } from "@/lib/wizard";
 
 type Props = {
   currentStep: WizardStep;
   uploadComplete: boolean;
+  hasUnknownTransactions: boolean;
+  hasMultiplePeriods: boolean;
   onStepClick: (step: WizardStep) => void;
 };
 
-export function WizardProgress({ currentStep, uploadComplete, onStepClick }: Props) {
-  const currentIndex = WIZARD_STEPS.findIndex((step) => step.id === currentStep);
+export function WizardProgress({
+  currentStep,
+  uploadComplete,
+  hasUnknownTransactions,
+  hasMultiplePeriods,
+  onStepClick,
+}: Props) {
+  const steps = visibleWizardSteps(hasUnknownTransactions, hasMultiplePeriods);
+  const currentIndex = steps.findIndex((step) => step.id === currentStep);
 
   return (
     <nav className="wizard-progress" aria-label="Analysis progress">
-      {WIZARD_STEPS.map((step, index) => {
+      {steps.map((step, index) => {
         const isComplete =
           index < currentIndex || (step.id === "upload" && uploadComplete);
         const isActive = step.id === currentStep;

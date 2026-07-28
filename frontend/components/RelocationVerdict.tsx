@@ -39,8 +39,9 @@ export function RelocationVerdict({
         <div>
           <h3>{affordability.verdictLabel}</h3>
           <p className="verdict-score-note">
-            <strong>{affordability.score}/100</strong> — relocation fit based on scenario income minus
-            estimated destination cost (all amounts in <strong>{displayCurrency}</strong>
+            <strong>{affordability.score}/100</strong> — relocation fit for{" "}
+            <strong>{referenceCity}</strong> based on scenario income minus estimated destination
+            cost (all amounts in <strong>{displayCurrency}</strong>
             {hasIncomeScenario || hasLifestyleScenario ? ", including what-if adjustments" : ""}
             ).
             {typeof financialHealthScore === "number" && (

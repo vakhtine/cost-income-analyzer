@@ -9,6 +9,7 @@ import {
   STATIC_CITY_BENCHMARKS,
 } from "@/lib/static-city-benchmarks";
 import { LocationCompareResult, LocationComparison, Transaction } from "@/lib/types";
+import { filterExpenseTransactions } from "@/lib/transaction-filters";
 import { round2 } from "@/lib/utils";
 import { fetchWhereNextCityPrices } from "@/lib/wherenext-api";
 
@@ -41,7 +42,7 @@ export function totalMonthlyBenchmark(
 
 export function getUserBenchmarkSpending(rows: Transaction[]) {
   const totals = new Map<string, number>();
-  for (const row of rows.filter((item) => item.transaction_type === "expense")) {
+  for (const row of filterExpenseTransactions(rows)) {
     const key = CATEGORY_ALIASES[row.category.trim().toLowerCase()];
     if (!key) continue;
     totals.set(key, (totals.get(key) ?? 0) + row.abs_amount);

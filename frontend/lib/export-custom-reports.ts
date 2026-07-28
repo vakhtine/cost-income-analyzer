@@ -1,15 +1,43 @@
 import { CityRecommendation } from "@/lib/city-recommender";
-import { getCategoryPdfSymbol } from "@/lib/category-icons";
+import { formatCategoryDisplayName, getCategoryPdfSymbol } from "@/lib/category-icons";
+import { topMerchantsByCategoryMap } from "@/lib/category-merchants";
+import {
+  buildDonutChartHtml,
+  buildFactorScorecardHtml,
+  buildKpiStripHtml,
+  buildReportIntroBlock,
+  buildRoundedBarChartHtml,
+  scoreBandLabel,
+  scoreBandTone,
+} from "@/lib/report-charts";
+import { getPeriodExpenseDateLabel, getReportPrivacyNotice } from "@/lib/report-dates";
 import {
   buildReportDocument,
   buildReportPageShell,
   downloadReportPdf,
   escapeHtml,
-  reportPreparedLine,
 } from "@/lib/report-export";
-import { getPeriodExpenseDateLabel, getReportPrivacyNotice } from "@/lib/report-dates";
-import { healthScoreForPeriodSelection } from "@/lib/rebuild";
-import { AnalyzeResponse, PeriodAnalysis } from "@/lib/types";
+import { healthScoreForReportSelection } from "@/lib/rebuild";
+import {
+  buildMetricDefinitionsHtml,
+  HEALTH_REPORT_METRICS,
+  TREND_REPORT_METRICS,
+} from "@/lib/report-metric-definitions";
+import {
+  adjacentPeriodPair,
+  combinePeriodRowsInRange,
+  computeCategoryTrends,
+  computeCategoryVolatility,
+  computeHerfindahlIndex,
+  computePeriodExpenseTrends,
+  detectAnomalies,
+  expenseSpendType,
+  slicePeriodOrder,
+} from "@/lib/spending-metrics";
+import { periodHasReportableData } from "@/lib/transaction-filters";
+import { AnalyzeResponse, PeriodAnalysis, PeriodReportSelection } from "@/lib/types";
+
+export type { PeriodReportSelection };
 
 export type CustomReportType =
   | "expenses-by-category"
@@ -25,6 +53,7 @@ export const CUSTOM_REPORT_LABELS: Record<CustomReportType, string> = {
 export type CustomReportPayload = {
   generatedAt: string;
   periodLabel: string;
+  periodSelection: PeriodReportSelection;
   baseCity?: string;
   displayCurrency: string;
   data: AnalyzeResponse;
@@ -46,214 +75,418 @@ function pageShell(
   context: PageContext,
   title: string,
   body: string,
-  privacyNotice: string
+  privacyNotice: string,
+  payload: CustomReportPayload
 ) {
+  const intro =
+    context.showGeneratedAt
+      ? buildReportIntroBlock(
+          payload.generatedAt,
+          payload.periodLabel,
+          payload.displayCurrency,
+          privacyNotice,
+          "Custom financial report generated from your uploaded statements."
+        )
+      : "";
+
   return buildReportPageShell({
     pageNumber: context.pageNumber,
     totalPages: context.totalPages,
     reportLabel: REPORT_LABEL,
     pageTitle: title,
-    body,
+    body: `${intro}${body}`,
     privacyNotice,
+    showPrivacy: false,
+    meta: {
+      generatedAt: payload.generatedAt,
+      periodLabel: payload.periodLabel,
+      displayCurrency: payload.displayCurrency,
+    },
   });
 }
 
-function preparedBlock(
-  payload: CustomReportPayload,
-  showPreparedLine: boolean
-) {
-  if (!showPreparedLine) return "";
-  return reportPreparedLine(
-    payload.generatedAt,
-    payload.periodLabel,
-    payload.displayCurrency
+function trendChangeClass(changePct: number) {
+  if (Math.abs(changePct) >= 50) return "neg";
+  return "";
+}
+
+function trendArrow(trend: string, changePct: number) {
+  if (trend === "Spike" || changePct >= 50) return `+${changePct.toFixed(1)}% ▲ ${trend}`;
+  if (changePct > 5) return `+${changePct.toFixed(1)}% ▲ Up`;
+  if (changePct < -5) return `${changePct.toFixed(1)}% ▼ Down`;
+  return `${changePct.toFixed(1)}% ▬ Stable`;
+}
+
+function effectivePeriodRows(payload: CustomReportPayload) {
+  const { data, periodSelection } = payload;
+  if (periodSelection.mode === "range") {
+    return combinePeriodRowsInRange(
+      data.period_rows,
+      data.periods,
+      periodSelection.start,
+      periodSelection.end
+    );
+  }
+  return data.period_rows[periodSelection.period] ?? [];
+}
+
+function effectiveFocusPeriod(payload: CustomReportPayload) {
+  if (payload.periodSelection.mode === "range") {
+    return payload.periodSelection.end;
+  }
+  return payload.periodSelection.period;
+}
+
+function formatCategoryCell(
+  category: string,
+  merchants: string[] | undefined,
+  symbol: string
+): string {
+  const merchantNote =
+    merchants && merchants.length
+      ? `<div class="category-merchants-note">${escapeHtml(merchants.join(" · "))}</div>`
+      : "";
+  return `${symbol} ${escapeHtml(formatCategoryDisplayName(category))}${merchantNote}`;
+}
+
+function buildTrendAnomalyPage(payload: CustomReportPayload, context: PageContext) {
+  const { data } = payload;
+  const focusPeriod = effectiveFocusPeriod(payload);
+  const periodRows = effectivePeriodRows(payload);
+  const merchantsMap = topMerchantsByCategoryMap(periodRows);
+  const periodOrder = data.periods.filter((period) =>
+    periodHasReportableData(data.period_rows[period] ?? [])
   );
-}
+  const trendPeriodOrder =
+    payload.periodSelection.mode === "range"
+      ? slicePeriodOrder(periodOrder, payload.periodSelection.start, payload.periodSelection.end).filter(
+          (period) => periodHasReportableData(data.period_rows[period] ?? [])
+        )
+      : periodOrder;
+  const hasMultiple = trendPeriodOrder.length >= 2;
+  const trends = hasMultiple ? computeCategoryTrends(data.period_rows, periodOrder, focusPeriod) : null;
+  const volatility = hasMultiple ? computeCategoryVolatility(data.period_rows, periodOrder) : [];
+  const anomalies = detectAnomalies(data.period_rows, periodOrder, focusPeriod);
+  const periodTrends = computePeriodExpenseTrends(data.period_rows, trendPeriodOrder);
+  const periodPair = adjacentPeriodPair(periodOrder, focusPeriod);
+  const thisPeriodHeader = periodPair
+    ? `This period (${periodPair.currentPeriod})`
+    : "This period";
+  const priorPeriodHeader = periodPair
+    ? `Prior period (${periodPair.priorPeriod})`
+    : "Prior period";
 
-function healthScoreTone(score: number) {
-  if (score >= 80) return "good";
-  if (score >= 50) return "mid";
-  return "low";
-}
+  const trendRows = trends
+    ? trends
+        .slice(0, 8)
+        .map((item, index) => {
+          const symbol = getCategoryPdfSymbol(item.category);
+          return `
+      <tr class="${index % 2 === 0 ? "stripe" : ""}">
+        <td>${formatCategoryCell(item.category, merchantsMap.get(item.category), symbol)}</td>
+        <td>${payload.formatExpense(item.current_total)}</td>
+        <td>${payload.formatExpense(item.prior_total)}</td>
+        <td class="${trendChangeClass(item.change_pct)}">${trendArrow(item.trend, item.change_pct)}</td>
+      </tr>`;
+        })
+        .join("")
+    : "";
 
-function buildExpensesTablePage(
-  payload: CustomReportPayload,
-  context: PageContext
-) {
-  const { periodAnalysis, periodLabel, data } = payload;
-  const categories = periodAnalysis.expense_categories;
-  const periodRows = data.period_rows[periodLabel] ?? Object.values(data.period_rows).flat();
-  const expenseDateLabel = getPeriodExpenseDateLabel(periodRows, periodLabel);
-
-  const rows = categories
+  const volatilityRows = volatility
+    .slice(0, 6)
     .map((item, index) => {
       const symbol = getCategoryPdfSymbol(item.category);
       return `
+    <tr class="${index % 2 === 0 ? "stripe" : ""}">
+      <td>${formatCategoryCell(item.category, merchantsMap.get(item.category), symbol)}</td>
+      <td class="${item.volatility_pct > 50 && item.avg_total >= 50 ? "neg" : ""}">${item.volatility_pct.toFixed(1)}%</td>
+      <td>${payload.formatExpense(item.avg_total)}</td>
+    </tr>`;
+    })
+    .join("");
+
+  const anomalyRows = anomalies.anomalies
+    .slice(0, 6)
+    .map(
+      (item, index) => `
+    <tr class="${index % 2 === 0 ? "stripe" : ""}">
+      <td>${escapeHtml(item.merchant_name)}${item.transaction_count > 1 ? ` (${item.transaction_count} txns)` : ""}</td>
+      <td>${escapeHtml(formatCategoryDisplayName(item.category))}</td>
+      <td>${payload.formatExpense(item.amount)} ⚠</td>
+      <td>${escapeHtml(item.description)}</td>
+    </tr>`
+    )
+    .join("");
+
+  const popRows = periodTrends
+    .map(
+      (item, index) => `
+    <tr class="${index % 2 === 0 ? "stripe" : ""}">
+      <td>${escapeHtml(item.period)}</td>
+      <td>${payload.formatExpense(item.total_expenses)}</td>
+      <td class="${item.change_pct !== null && Math.abs(item.change_pct) >= 50 ? "neg" : ""}">${item.change_pct !== null ? `${item.change_pct >= 0 ? "+" : ""}${item.change_pct.toFixed(1)}%` : "—"}</td>
+    </tr>`
+    )
+    .join("");
+
+  const body = `
+    <div class="section-block">
+      <h2 class="section-title">Period-over-period trend</h2>
+      ${
+        hasMultiple
+          ? `<table class="index-table compact">
+               <thead><tr><th>Period</th><th>Total expenses</th><th>Change</th></tr></thead>
+               <tbody>${popRows}</tbody>
+             </table>`
+          : `<p class="muted-note">Upload more than one month to unlock period-over-period trends.</p>`
+      }
+    </div>
+    ${
+      trends?.length
+        ? `<div class="section-block section-block-loose">
+             <h2 class="section-title">Expenses category trend</h2>
+             <table class="index-table">
+               <thead><tr><th>Expenses category</th><th>${escapeHtml(thisPeriodHeader)}</th><th>${escapeHtml(priorPeriodHeader)}</th><th>Change</th></tr></thead>
+               <tbody>${trendRows}</tbody>
+             </table>
+           </div>`
+        : ""
+    }
+    ${
+      volatility.length
+        ? `<div class="section-block section-block-loose">
+             <h2 class="section-title">Expenses category volatility (month to month)</h2>
+             <table class="index-table compact">
+               <thead><tr><th>Expenses category</th><th>Volatility (CV)</th><th>Avg monthly spend</th></tr></thead>
+               <tbody>${volatilityRows}</tbody>
+             </table>
+           </div>`
+        : ""
+    }
+    <div class="section-block details-section">
+      <h2 class="section-title">Anomaly flags</h2>
+      ${
+        anomalies.anomalies.length
+          ? `<table class="index-table">
+               <thead><tr><th>Merchant</th><th>Expenses category</th><th>Amount</th><th>Flag</th></tr></thead>
+               <tbody>${anomalyRows}</tbody>
+             </table>
+             <p class="muted-note">${anomalies.anomalies.length} flagged of ${anomalies.total_transactions} transactions. Compared to your own past spending — not market averages.</p>`
+          : `<p class="muted-note">No statistical outliers detected for ${escapeHtml(focusPeriod)}. Flags compare spending to your own past months — not market averages.</p>`
+      }
+    </div>
+    ${buildMetricDefinitionsHtml(TREND_REPORT_METRICS)}
+  `;
+
+  return pageShell(
+    context,
+    "Trend & anomaly view",
+    body,
+    getReportPrivacyNotice(payload.data.privacy_notice),
+    payload
+  );
+}
+
+function buildTopCategoriesVisuals(payload: CustomReportPayload) {
+  const topCategories = payload.periodAnalysis.expense_categories.slice(0, 5);
+  const donut = buildDonutChartHtml(
+    topCategories.map((item) => ({
+      label: item.category,
+      value: item.total,
+      symbol: getCategoryPdfSymbol(item.category),
+    })),
+    payload.formatExpense
+  );
+
+  const bars = buildRoundedBarChartHtml(
+    topCategories.map((item) => ({
+      label: item.category,
+      value: item.total,
+      symbol: getCategoryPdfSymbol(item.category),
+    })),
+    payload.formatExpense
+  );
+
+  return `
+    <div class="chart-panel-grid">
+      <div class="chart-panel">
+        <h2 class="section-title">Top 5 expenses categories</h2>
+        ${donut}
+      </div>
+      <div class="chart-panel">
+        <h2 class="section-title">Share by amount</h2>
+        ${bars}
+      </div>
+    </div>`;
+}
+
+function buildExpensesTablePage(payload: CustomReportPayload, context: PageContext) {
+  const { periodAnalysis, periodLabel } = payload;
+  const categories = periodAnalysis.expense_categories;
+  const periodRows = effectivePeriodRows(payload);
+  const expenseDateLabel = getPeriodExpenseDateLabel(periodRows, periodLabel);
+  const merchantsMap = topMerchantsByCategoryMap(periodRows);
+
+  const topRows = periodAnalysis.expense_categories
+    .slice(0, 5)
+    .map((item, index) => {
+      const symbol = getCategoryPdfSymbol(item.category);
+      const spendType = expenseSpendType(item.category);
+      return `
       <tr class="${index % 2 === 0 ? "stripe" : ""}">
-        <td>${symbol} ${escapeHtml(item.category)}</td>
+        <td>${formatCategoryCell(item.category, merchantsMap.get(item.category), symbol)}</td>
         <td>${item.count}</td>
         <td>${payload.formatExpense(item.total)}</td>
         <td>${item.pct_of_expenses?.toFixed(1) ?? "—"}%</td>
-        <td>${item.pct_of_income.toFixed(1)}%</td>
+        <td><span class="type-pill type-pill-${spendType.toLowerCase()}">${spendType}</span></td>
       </tr>`;
     })
     .join("");
 
   const body = `
-    ${preparedBlock(payload, context.showGeneratedAt)}
-    <p class="section-explanation">${escapeHtml(expenseDateLabel)}.</p>
-    <hr class="divider" />
-    <div class="metric-grid">
-      <div class="metric-card"><span>Total expenses</span><strong>${payload.formatExpense(periodAnalysis.total_expenses)}</strong></div>
-      <div class="metric-card"><span>Total income</span><strong>${payload.formatIncome(periodAnalysis.total_income)}</strong></div>
-      <div class="metric-card"><span>Categories tracked</span><strong>${categories.length}</strong></div>
+    <div class="hero-zone">
+      ${buildKpiStripHtml([
+        { label: "Total expenses", value: payload.formatExpense(periodAnalysis.total_expenses) },
+        { label: "Total income", value: payload.formatIncome(periodAnalysis.total_income) },
+        { label: "Income/expenses categories tracked", value: String(categories.length) },
+      ])}
+      ${buildTopCategoriesVisuals(payload)}
     </div>
-    <h2 class="section-title">Category breakdown</h2>
-    <p class="section-explanation">${escapeHtml(expenseDateLabel)}.</p>
-    <table class="index-table">
-      <thead>
-        <tr>
-          <th>Category</th>
-          <th>Txns</th>
-          <th>Total</th>
-          <th>% expenses</th>
-          <th>% income</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows}
-        <tr class="total-row">
-          <td><strong>Total</strong></td>
-          <td></td>
-          <td><strong>${payload.formatExpense(periodAnalysis.total_expenses)}</strong></td>
-          <td><strong>100%</strong></td>
-          <td><strong>${periodAnalysis.total_income ? ((periodAnalysis.total_expenses / periodAnalysis.total_income) * 100).toFixed(1) : "—"}%</strong></td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="details-section">
+      <h2 class="section-title">Top 5 expenses category summary</h2>
+      <p class="muted-note">${escapeHtml(expenseDateLabel)}</p>
+      <table class="index-table">
+        <thead>
+          <tr>
+            <th>Expenses category</th>
+            <th>Txns</th>
+            <th>Total</th>
+            <th>% expenses</th>
+            <th>Type</th>
+          </tr>
+        </thead>
+        <tbody>${topRows}</tbody>
+      </table>
+    </div>
   `;
 
   return pageShell(
     context,
     "Expenses by category",
     body,
-    getReportPrivacyNotice(payload.data.privacy_notice)
-  );
-}
-
-function buildExpensesChartPage(
-  payload: CustomReportPayload,
-  context: PageContext
-) {
-  const { periodAnalysis } = payload;
-  const categories = periodAnalysis.expense_categories;
-  const maxTotal = Math.max(...categories.map((item) => item.total), 1);
-
-  const bars = categories
-    .slice(0, 10)
-    .map((item) => {
-      const width = Math.round((item.total / maxTotal) * 100);
-      return `
-      <div class="bar-chart-row">
-        <span>${escapeHtml(item.category)}</span>
-        <div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div>
-        <strong>${payload.formatExpense(item.total)}</strong>
-      </div>`;
-    })
-    .join("");
-
-  const body = `
-    <hr class="divider" />
-    <h2 class="section-title">Top categories chart</h2>
-    <div class="bar-chart-section">${bars}</div>
-  `;
-
-  return pageShell(
-    context,
-    "Expenses by category",
-    body,
-    getReportPrivacyNotice(payload.data.privacy_notice)
+    getReportPrivacyNotice(payload.data.privacy_notice),
+    payload
   );
 }
 
 function buildHealthReport(payload: CustomReportPayload, context: PageContext) {
-  const health_score = healthScoreForPeriodSelection(
+  const health_score = healthScoreForReportSelection(
     payload.data.period_rows,
-    payload.periodLabel
+    payload.data.periods,
+    payload.periodSelection
   );
   const metrics = health_score.metrics;
+  const tone = scoreBandTone(health_score.overall);
+  const periodRows = effectivePeriodRows(payload);
+  const merchantsMap = topMerchantsByCategoryMap(periodRows);
+  const concentration = computeHerfindahlIndex(
+    payload.periodAnalysis.expense_categories,
+    payload.periodAnalysis.total_expenses
+  );
 
-  const factors = [
-    { label: "Savings rate", score: health_score.savings_rate_score, weight: 40, detail: health_score.details[0] },
-    { label: "Income stability", score: health_score.income_stability_score, weight: 30, detail: health_score.details[1] },
-    { label: "Non-essential control", score: health_score.non_essential_score, weight: 30, detail: health_score.details[2] },
-  ]
-    .map(
-      (factor) => {
-        const factorTone = healthScoreTone(factor.score);
-        return `
-    <div class="factor-row">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <strong>${escapeHtml(factor.label)}</strong>
-        <span class="score-summary score-summary-${factorTone}">${factor.score}/100</span>
-      </div>
-      <div class="factor-track"><div class="factor-fill factor-fill-${factorTone}" style="width:${factor.score}%"></div></div>
-      <p class="factor-detail">
-        ${escapeHtml(factor.detail)}
-      </p>
-      <p class="section-note" style="margin:4px 0 0;">
-        <strong>Weight:</strong> ${factor.weight}% of overall score.
-        <strong>Contribution:</strong> ${((factor.score * factor.weight) / 100).toFixed(1)} / ${factor.weight} points
-        (${factor.score}/100 × ${factor.weight}%).
-      </p>
-    </div>`;
-      }
-    )
+  const recurringRows = payload.periodAnalysis.expense_categories.filter(
+    (item) => expenseSpendType(item.category) === "RECURRING"
+  );
+  const variableRows = payload.periodAnalysis.expense_categories.filter(
+    (item) => expenseSpendType(item.category) === "VARIABLE"
+  );
+  const recurringTotal = recurringRows.reduce((sum, item) => sum + item.total, 0);
+  const variableTotal = variableRows.reduce((sum, item) => sum + item.total, 0);
+
+  const structureRows = payload.periodAnalysis.expense_categories
+    .map((item, index) => {
+      const spendType = expenseSpendType(item.category);
+      const symbol = getCategoryPdfSymbol(item.category);
+      return `
+      <tr class="${index % 2 === 0 ? "stripe" : ""}">
+        <td>${formatCategoryCell(item.category, merchantsMap.get(item.category), symbol)}</td>
+        <td><span class="type-pill type-pill-${spendType.toLowerCase()}">${spendType}</span></td>
+        <td>${payload.formatExpense(item.total)}</td>
+        <td>${item.pct_of_expenses?.toFixed(1) ?? "—"}%</td>
+      </tr>`;
+    })
     .join("");
 
-  const metricsHtml = metrics
-    ? `
-    <div class="metric-grid">
-      <div class="metric-card"><span>Savings rate</span><strong>${metrics.savings_rate_pct.toFixed(1)}%</strong></div>
-      <div class="metric-card"><span>Total income</span><strong>${payload.formatIncome(metrics.total_income)}</strong></div>
-      <div class="metric-card"><span>Total expenses</span><strong>${payload.formatExpense(metrics.total_expenses)}</strong></div>
-      <div class="metric-card"><span>Net savings</span><strong>${payload.formatIncome(metrics.net_savings)}</strong></div>
-      <div class="metric-card"><span>Expense / income</span><strong>${metrics.expense_to_income_ratio.toFixed(1)}%</strong></div>
-      <div class="metric-card"><span>Non-essential</span><strong>${metrics.non_essential_of_expenses_pct.toFixed(1)}% of expenses</strong></div>
-      <div class="metric-card"><span>Income sources</span><strong>${metrics.income_source_count}</strong></div>
-      <div class="metric-card"><span>Periods analyzed</span><strong>${metrics.period_count}</strong></div>
-      <div class="metric-card"><span>Income volatility</span><strong>${metrics.income_volatility_pct !== null ? `${metrics.income_volatility_pct.toFixed(1)}%` : "N/A"}</strong></div>
-      <div class="metric-card"><span>Largest expense</span><strong>${escapeHtml(metrics.largest_expense_category)} (${payload.formatExpense(metrics.largest_expense_amount)})</strong></div>
-      <div class="metric-card"><span>Expense volatility</span><strong>${metrics.expense_volatility_pct !== null ? `${metrics.expense_volatility_pct.toFixed(1)}%` : "N/A"}</strong></div>
-      <div class="metric-card"><span>Avg daily spend</span><strong>${payload.formatExpense(metrics.avg_daily_spend)}</strong></div>
-    </div>`
+  const factorCards = [
+    buildFactorScorecardHtml("Savings rate", health_score.savings_rate_score, 40),
+    buildFactorScorecardHtml("Income stability", health_score.income_stability_score, 30),
+    buildFactorScorecardHtml("Non-essential control", health_score.non_essential_score, 30),
+  ].join("");
+
+  const quickStats = metrics
+    ? buildKpiStripHtml([
+        { label: "Savings rate", value: `${metrics.savings_rate_pct.toFixed(1)}%`, tone: "good" },
+        { label: "Net savings", value: payload.formatIncome(metrics.net_savings) },
+        { label: "Expense / income", value: `${metrics.expense_to_income_ratio.toFixed(1)}%` },
+      ])
     : "";
 
-  const tone = healthScoreTone(health_score.overall);
-
   const body = `
-    ${preparedBlock(payload, context.showGeneratedAt)}
-    <p class="section-explanation">Overall score combines savings rate (40%), income stability (30%), and non-essential spending (30%). This score reflects your spending habits — it is separate from relocation affordability (city cost fit).</p>
-    <hr class="divider" />
-    <div class="score-ring score-ring-${tone}">${health_score.overall}</div>
-    <p class="score-ring-caption">Financial health score</p>
-    <p class="section-explanation score-summary score-summary-${tone}" style="text-align:center;margin-bottom:4mm;">
-      <strong>${escapeHtml(health_score.summary)}</strong>
-    </p>
-    ${metricsHtml}
-    <h2 class="section-title">Score breakdown</h2>
-    <p class="section-explanation">
-      Overall financial health score = (Savings rate × 40%) + (Income stability × 30%) + (Non-essential control × 30%).
-      Current overall: <strong>${health_score.overall}/100</strong>.
-    </p>
-    ${factors}
+    <div class="hero-zone">
+      <div class="score-hero score-hero-${tone}">
+        <div class="score-hero-main">
+          <div class="score-hero-value">${health_score.overall}</div>
+          <div class="score-hero-band">${escapeHtml(scoreBandLabel(health_score.overall, "health"))}</div>
+          <div class="score-hero-name">Financial health score</div>
+          <p class="score-hero-summary">${escapeHtml(health_score.summary)}</p>
+        </div>
+        <div class="score-hero-factors">${factorCards}</div>
+      </div>
+    </div>
+    ${quickStats}
+    <div class="details-section">
+      <h2 class="section-title">Supporting metrics</h2>
+      ${
+        metrics
+          ? `<div class="metric-grid">
+              <div class="metric-card"><span>HHI (expenses categories)</span><strong>${metrics.expense_concentration_hhi.toFixed(2)}</strong></div>
+              <div class="metric-card"><span>Top expenses category share</span><strong>${metrics.top_category_share_pct.toFixed(1)}%</strong></div>
+              <div class="metric-card"><span>Avg daily spend</span><strong>${payload.formatExpense(metrics.avg_daily_spend)}</strong></div>
+              <div class="metric-card"><span>Expense volatility (month to month)</span><strong>${metrics.expense_volatility_pct !== null ? `${metrics.expense_volatility_pct.toFixed(1)}%` : "N/A"}</strong></div>
+            </div>`
+          : ""
+      }
+    </div>
+    <div class="section-block">
+      <h2 class="section-title">Concentration</h2>
+      <div class="metric-grid">
+        <div class="metric-card"><span>Concentration index (HHI, expenses categories)</span><strong>${concentration.hhi.toFixed(2)} / 1.0</strong></div>
+        <div class="metric-card"><span>Top expenses category share</span><strong>${concentration.top_category_share_pct.toFixed(1)}%</strong></div>
+        <div class="metric-card"><span>Income/expenses categories tracked</span><strong>${concentration.category_count}</strong></div>
+      </div>
+      <p class="muted-note">${escapeHtml(concentration.interpretation)}</p>
+    </div>
+    <div class="section-block section-block-loose">
+      <h2 class="section-title">Recurring vs one-off</h2>
+      <table class="index-table">
+        <thead>
+          <tr><th>Expenses category</th><th>Type</th><th>Total</th><th>% of expenses</th></tr>
+        </thead>
+        <tbody>${structureRows}</tbody>
+      </table>
+      <p class="muted-note">
+        Recurring ${payload.formatExpense(recurringTotal)} · Variable ${payload.formatExpense(variableTotal)}
+      </p>
+    </div>
+    ${buildMetricDefinitionsHtml(HEALTH_REPORT_METRICS)}
   `;
 
   return pageShell(
     context,
     "Financial health score",
     body,
-    getReportPrivacyNotice(payload.data.privacy_notice)
+    getReportPrivacyNotice(payload.data.privacy_notice),
+    payload
   );
 }
 
@@ -261,16 +494,13 @@ function buildBestFitReport(payload: CustomReportPayload, context: PageContext) 
   const { recommendations, baseCity } = payload;
 
   if (!recommendations.length) {
-    const body = `
-      ${preparedBlock(payload, context.showGeneratedAt)}
-      <p class="section-explanation">Run city comparison in the app to populate rankings.</p>
-      <p class="section-explanation">No city recommendations available yet.</p>
-    `;
+    const body = `<p class="muted-note">Run city comparison in the app to populate rankings.</p>`;
     return pageShell(
       context,
       "Best-fit cities by budget",
       body,
-      getReportPrivacyNotice(payload.data.privacy_notice)
+      getReportPrivacyNotice(payload.data.privacy_notice),
+      payload
     );
   }
 
@@ -288,52 +518,55 @@ function buildBestFitReport(payload: CustomReportPayload, context: PageContext) 
     .join("");
 
   const body = `
-    ${preparedBlock(payload, context.showGeneratedAt)}
-    <p class="section-explanation">
-      ${baseCity ? `Compared against your spending from ${escapeHtml(baseCity)}.` : ""}
-      Ranked by projected monthly balance.
-    </p>
-    <hr class="divider" />
-    <table class="index-table">
-      <thead>
-        <tr>
-          <th>City</th>
-          <th>Est. monthly cost</th>
-          <th>Projected balance</th>
-          <th>Relocation affordability score</th>
-          <th>Verdict</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <p class="section-explanation">
-      Top pick: <strong>${escapeHtml(recommendations[0].city)}</strong> with projected balance
-      ${recommendations[0].projectedBalance >= 0 ? "+" : ""}${payload.formatIncome(recommendations[0].projectedBalance)}.
-    </p>
+    <div class="hero-zone">
+      ${buildKpiStripHtml([
+        { label: "Top city", value: escapeHtml(recommendations[0].city), tone: "good" },
+        {
+          label: "Best balance",
+          value: `${recommendations[0].projectedBalance >= 0 ? "+" : ""}${payload.formatIncome(recommendations[0].projectedBalance)}`,
+          tone: "good",
+        },
+        { label: "Top score", value: `${recommendations[0].score}/100`, tone: "good" },
+      ])}
+    </div>
+    <div class="section-block">
+      <h2 class="section-title">City rankings</h2>
+      <p class="muted-note">${baseCity ? `Compared from ${escapeHtml(baseCity)}.` : ""} Ranked by projected monthly balance.</p>
+      <table class="index-table">
+        <thead>
+          <tr>
+            <th>City</th>
+            <th>Est. monthly cost</th>
+            <th>Projected balance</th>
+            <th>Score</th>
+            <th>Verdict</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
   `;
 
   return pageShell(
     context,
     "Best-fit cities by budget",
     body,
-    getReportPrivacyNotice(payload.data.privacy_notice)
+    getReportPrivacyNotice(payload.data.privacy_notice),
+    payload
   );
 }
 
-function buildReportPages(
-  types: CustomReportType[],
-  payload: CustomReportPayload
-) {
+function buildReportPages(types: CustomReportType[], payload: CustomReportPayload) {
   const builders: ((context: PageContext) => string)[] = [];
 
   for (const type of types) {
     if (type === "expenses-by-category") {
       builders.push((context) => buildExpensesTablePage(payload, context));
-      builders.push((context) => buildExpensesChartPage(payload, context));
       continue;
     }
     if (type === "financial-health") {
       builders.push((context) => buildHealthReport(payload, context));
+      builders.push((context) => buildTrendAnomalyPage(payload, context));
       continue;
     }
     builders.push((context) => buildBestFitReport(payload, context));
@@ -349,10 +582,7 @@ function buildReportPages(
   );
 }
 
-export function buildCustomReportsHtml(
-  types: CustomReportType[],
-  payload: CustomReportPayload
-) {
+export function buildCustomReportsHtml(types: CustomReportType[], payload: CustomReportPayload) {
   const pages = buildReportPages(types, payload);
   const title = `${REPORT_LABEL}: ${types.map((type) => CUSTOM_REPORT_LABELS[type]).join(", ")}`;
   return buildReportDocument(title, pages.join(""));

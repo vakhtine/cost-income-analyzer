@@ -108,7 +108,7 @@ export function resolvePeriodForDate(
     if (periodKeyFromLabel(period) === key) return period;
   }
 
-  return key;
+  return fallbackPeriod;
 }
 
 export function orderedPeriodKeys(
@@ -142,4 +142,49 @@ export function reassignGlobalTransactionIds<T extends { id: number }>(
   }
 
   return next;
+}
+
+export function filterReportablePeriodOrder<TRow>(
+  periodOrder: string[],
+  periodRows: Record<string, TRow[]>,
+  hasData: (rows: TRow[]) => boolean
+): string[] {
+  return periodOrder.filter((period) => hasData(periodRows[period] ?? []));
+}
+
+export function deriveUploadPeriods(periodRows: Record<string, unknown[]>): string[] {
+  return orderedPeriodKeys(periodRows, Object.keys(periodRows));
+}
+
+export function consolidateRowsIntoUploadPeriods<
+  T extends { period: string; date?: string }
+>(
+  periodRows: Record<string, T[]>,
+  uploadPeriods: string[]
+): Record<string, T[]> {
+  const consolidated = Object.fromEntries(
+    uploadPeriods.map((period) => [period, [] as T[]])
+  ) as Record<string, T[]>;
+  const fallback = uploadPeriods[uploadPeriods.length - 1] ?? uploadPeriods[0];
+
+  if (!fallback) return consolidated;
+
+  for (const [sourceKey, rows] of Object.entries(periodRows)) {
+    for (const row of rows) {
+      let target: string;
+      if (uploadPeriods.includes(sourceKey)) {
+        target = sourceKey;
+      } else if (row.date?.trim()) {
+        target = resolvePeriodForDate(row.date, uploadPeriods, fallback);
+      } else if (uploadPeriods.includes(row.period)) {
+        target = row.period;
+      } else {
+        target = fallback;
+      }
+
+      consolidated[target].push({ ...row, period: target });
+    }
+  }
+
+  return consolidated;
 }

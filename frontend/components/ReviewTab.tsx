@@ -73,6 +73,10 @@ type Props = {
 
   onUpdate: (data: AnalyzeResponse) => void;
 
+  showUnknownSection?: boolean;
+
+  showEditorSection?: boolean;
+
 };
 
 
@@ -128,7 +132,7 @@ function countRowTypes(rows: { category: string }[]) {
 
 
 
-export function ReviewTab({ data, onUpdate }: Props) {
+export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEditorSection = true }: Props) {
 
   const [editPeriod, setEditPeriod] = useState(data.periods[data.periods.length - 1]);
 
@@ -304,9 +308,15 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
 
 
-    const next = mergeEditableRowsIntoPeriodRows(editableRows, editPeriod, data.period_rows);
+    const canonicalPeriods = data.upload_periods ?? data.periods;
+    const next = mergeEditableRowsIntoPeriodRows(
+      editableRows,
+      editPeriod,
+      data.period_rows,
+      canonicalPeriods
+    );
 
-    const rebuilt = rebuildAnalyzeResponse(next);
+    const rebuilt = rebuildAnalyzeResponse(next, canonicalPeriods);
 
     onUpdate(rebuilt);
 
@@ -359,7 +369,8 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
     const next = { ...data.period_rows, [editPeriod]: updated };
 
-    onUpdate(rebuildAnalyzeResponse(next));
+    const canonicalPeriods = data.upload_periods ?? data.periods;
+    onUpdate(rebuildAnalyzeResponse(next, canonicalPeriods));
 
     setUnknownAssignments({});
 
@@ -397,7 +408,8 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
     const next = applyFlagFixes(data.period_rows, fixes);
 
-    const rebuilt = rebuildAnalyzeResponse(next);
+    const canonicalPeriods = data.upload_periods ?? data.periods;
+    const rebuilt = rebuildAnalyzeResponse(next, canonicalPeriods);
 
     onUpdate(rebuilt);
 
@@ -437,7 +449,8 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
     const next = applyFlagFixes(data.period_rows, fixes);
 
-    const rebuilt = rebuildAnalyzeResponse(next);
+    const canonicalPeriods = data.upload_periods ?? data.periods;
+    const rebuilt = rebuildAnalyzeResponse(next, canonicalPeriods);
 
     onUpdate(rebuilt);
 
@@ -533,9 +546,26 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
 
 
+      {showUnknownSection && (
+
       <section className="card">
 
-        <h3>Categorize unknown merchants</h3>
+        <h3>Categorize unknown or uncategorized merchants</h3>
+
+        {!showEditorSection && (
+          <div className="form-row">
+            <label className="review-period-label">
+              Period
+              <select value={editPeriod} onChange={(event) => setEditPeriod(event.target.value)}>
+                {data.periods.map((period) => (
+                  <option key={period} value={period}>
+                    {period}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
 
         <p className="transfer-category-note">
           Use <strong>{TRANSFER_CATEGORY_LABEL}</strong> for money moved between your own accounts
@@ -610,7 +640,13 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
       </section>
 
+      )}
 
+
+
+      {showEditorSection && (
+
+      <>
 
       <section className="card editor-card">
 
@@ -867,16 +903,15 @@ export function ReviewTab({ data, onUpdate }: Props) {
 
         {actionableFlags.length === 0 ? (
 
-          <p>No unusual categorizations detected.</p>
+          <p>No unusual categorizations detected in your uploaded transactions.</p>
 
         ) : (
 
           <>
 
             <p>
-
-              Suggestions are applied unless you choose <strong>Keep current</strong> for a row.
-
+              These suggestions apply only to merchants already in your upload. They are applied
+              unless you choose <strong>Keep current</strong> for a row.
             </p>
 
             {actionableFlags.map((flag) => {
@@ -970,6 +1005,10 @@ export function ReviewTab({ data, onUpdate }: Props) {
         )}
 
       </section>
+
+      </>
+
+      )}
 
     </div>
 

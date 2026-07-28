@@ -3,9 +3,21 @@ import { calculateHealthScore } from "@/lib/health-score";
 import { comparePeriods, explainCategoryChange } from "@/lib/period-analyzer";
 import { CategorizationFlag, PeriodComparison, Transaction } from "@/lib/types";
 
+function merchantMatchesHint(merchantLower: string, keyword: string) {
+  const normalizedKeyword = keyword.trim().toLowerCase();
+  if (!normalizedKeyword) return false;
+
+  if (merchantLower === normalizedKeyword) return true;
+
+  const pattern = new RegExp(
+    `(^|[^a-z0-9])${normalizedKeyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`
+  );
+  return pattern.test(merchantLower);
+}
+
 function suggestedCategory(merchantLower: string) {
   for (const [keyword, category] of Object.entries(MERCHANT_CATEGORY_HINTS)) {
-    if (merchantLower.includes(keyword)) return category;
+    if (merchantMatchesHint(merchantLower, keyword)) return category;
   }
   return null;
 }
@@ -30,20 +42,7 @@ export function detectCategorizationIssues(periods: Record<string, Transaction[]
           merchant_name: row.merchant_name,
           current_category: row.category,
           suggested_category: suggested,
-          reason: "Merchant usually fits another category.",
-          amount: row.abs_amount,
-        });
-        continue;
-      }
-
-      if (suggested && categoryLower !== suggested.toLowerCase() && !INCOME_CATEGORIES.has(categoryLower)) {
-        flags.push({
-          row_id: row.id,
-          period: periodName,
-          merchant_name: row.merchant_name,
-          current_category: row.category,
-          suggested_category: suggested,
-          reason: `${row.merchant_name} is categorized as ${row.category}, but often maps to ${suggested}.`,
+          reason: "This merchant appears in your upload with category Unknown.",
           amount: row.abs_amount,
         });
         continue;

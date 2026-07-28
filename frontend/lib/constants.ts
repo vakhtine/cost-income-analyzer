@@ -18,12 +18,22 @@ export const TRANSFER_CATEGORIES = new Set([
   "cc payment",
   "internal transfer",
   "account transfer",
+  "wire transfer",
+  "bank transfer",
+  "e-transfer",
+  "etransfer",
+  "interac e-transfer",
+  "interac",
+  "payment transfer",
 ]);
 
 export const TRANSFER_CATEGORY_LABEL = "Transfer";
 
 export function isTransferCategory(category: string) {
-  return TRANSFER_CATEGORIES.has(category.trim().toLowerCase());
+  const normalized = category.trim().toLowerCase();
+  if (TRANSFER_CATEGORIES.has(normalized)) return true;
+  if (normalized.includes("transfer") && !normalized.includes("transport")) return true;
+  return false;
 }
 
 export function resolveTransactionType(category: string): "income" | "expense" | "transfer" {
@@ -35,6 +45,7 @@ export function resolveTransactionType(category: string): "income" | "expense" |
 
 export const DEFAULT_EXPENSE_CATEGORIES = [
   "Rent",
+  "Mortgage payment",
   "Groceries",
   "Restaurants",
   "Transport",
@@ -108,7 +119,13 @@ export const COLUMN_ALIASES: Record<string, keyof RawRow> = {
   "transaction amount": "amount",
   "value": "amount",
   date: "date",
+  "transaction date": "date",
+  "posting date": "date",
+  "posted date": "date",
   period: "period",
+  month: "period",
+  "statement period": "period",
+  "reporting period": "period",
 };
 
 export const WHERENEXT_CITY_KEYS: Record<string, string> = {
@@ -153,6 +170,9 @@ export const CATEGORY_ALIASES: Record<string, string> = {
   housing: "rent",
   groceries: "groceries",
   grocery: "groceries",
+  "mortgage payment": "mortgage",
+  mortgage: "mortgage",
+  "mortgage payments": "mortgage",
   restaurants: "restaurants",
   restaurant: "restaurants",
   dining: "restaurants",

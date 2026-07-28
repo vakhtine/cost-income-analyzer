@@ -9,6 +9,7 @@ import {
   reassignGlobalTransactionIds,
   resolvePeriodForDate,
 } from "@/lib/period-utils";
+import { filterExpenseTransactions } from "@/lib/transaction-filters";
 import { CategorizationFlag, Transaction } from "@/lib/types";
 
 type EditableInput = {
@@ -20,12 +21,13 @@ type EditableInput = {
 };
 
 export function isUnknownCategory(category: string) {
-  return category.trim().toLowerCase() === "unknown";
+  const key = category.trim().toLowerCase();
+  return key === "unknown" || key === "uncategorized" || key.includes("uncategor");
 }
 
 export function getKnownExpenseCategories(rows: Transaction[]) {
   const categories = new Set<string>();
-  for (const row of rows) {
+  for (const row of filterExpenseTransactions(rows)) {
     if (row.transaction_type === "expense" && !isUnknownCategory(row.category)) {
       categories.add(row.category);
     }
@@ -61,6 +63,16 @@ export function getUnknownMerchants(rows: Transaction[]) {
   return [...totals.entries()]
     .map(([merchant_name, total]) => ({ merchant_name, total }))
     .sort((a, b) => b.total - a.total);
+}
+
+export function countUnknownTransactions(rows: Transaction[]) {
+  return rows.filter(
+    (row) => row.transaction_type === "expense" && isUnknownCategory(row.category)
+  ).length;
+}
+
+export function hasUnknownTransactionsInData(data: { period_rows: Record<string, Transaction[]> }) {
+  return countUnknownTransactions(Object.values(data.period_rows).flat()) > 0;
 }
 
 export function applyUnknownAssignments(
@@ -159,15 +171,18 @@ export function editableToTransactions(
 export function mergeEditableRowsIntoPeriodRows(
   editableRows: EditableInput[],
   editPeriod: string,
-  existingPeriodRows: Record<string, Transaction[]>
+  existingPeriodRows: Record<string, Transaction[]>,
+  canonicalPeriods?: string[]
 ): Record<string, Transaction[]> {
+  const uploadPeriods = canonicalPeriods?.length
+    ? canonicalPeriods
+    : Object.keys(existingPeriodRows);
   const originalRows = existingPeriodRows[editPeriod] ?? [];
   const originalIds = new Set(originalRows.map((row) => row.id));
-  const existingPeriods = Object.keys(existingPeriodRows);
 
   const next: Record<string, Transaction[]> = {};
-  for (const [period, rows] of Object.entries(existingPeriodRows)) {
-    next[period] = rows.filter((row) => !originalIds.has(row.id));
+  for (const period of uploadPeriods) {
+    next[period] = (existingPeriodRows[period] ?? []).filter((row) => !originalIds.has(row.id));
   }
 
   const grouped = new Map<string, EditableInput[]>();
@@ -175,9 +190,12 @@ export function mergeEditableRowsIntoPeriodRows(
     const raw = editableRowToRaw(row, editPeriod);
     if (!raw) continue;
 
-    const targetPeriod = row.date?.trim()
-      ? resolvePeriodForDate(row.date, [...existingPeriods, ...Object.keys(next)], editPeriod)
+    let targetPeriod = row.date?.trim()
+      ? resolvePeriodForDate(row.date, uploadPeriods, editPeriod)
       : editPeriod;
+    if (!uploadPeriods.includes(targetPeriod)) {
+      targetPeriod = editPeriod;
+    }
 
     if (!grouped.has(targetPeriod)) grouped.set(targetPeriod, []);
     grouped.get(targetPeriod)!.push(row);
@@ -188,29 +206,35 @@ export function mergeEditableRowsIntoPeriodRows(
     next[targetPeriod] = [...(next[targetPeriod] ?? []), ...transactions];
   }
 
-  return reassignGlobalTransactionIds(next, existingPeriods);
+  return reassignGlobalTransactionIds(next, uploadPeriods);
 }
 
 export function appendEditableRowToPeriodRows(
   row: EditableInput,
   fallbackPeriod: string,
-  existingPeriodRows: Record<string, Transaction[]>
+  existingPeriodRows: Record<string, Transaction[]>,
+  canonicalPeriods?: string[]
 ): Record<string, Transaction[]> {
+  const uploadPeriods = canonicalPeriods?.length
+    ? canonicalPeriods
+    : Object.keys(existingPeriodRows);
   const raw = editableRowToRaw(row, fallbackPeriod);
   if (!raw) return existingPeriodRows;
 
-  const existingPeriods = Object.keys(existingPeriodRows);
-  const targetPeriod = row.date?.trim()
-    ? resolvePeriodForDate(row.date, existingPeriods, fallbackPeriod)
+  let targetPeriod = row.date?.trim()
+    ? resolvePeriodForDate(row.date, uploadPeriods, fallbackPeriod)
     : fallbackPeriod;
+  if (!uploadPeriods.includes(targetPeriod)) {
+    targetPeriod = fallbackPeriod;
+  }
   const [transaction] = editableToTransactions([row], targetPeriod);
 
-  const next = {
-    ...existingPeriodRows,
-    [targetPeriod]: [...(existingPeriodRows[targetPeriod] ?? []), transaction],
-  };
+  const next = Object.fromEntries(
+    uploadPeriods.map((period) => [period, [...(existingPeriodRows[period] ?? [])]])
+  ) as Record<string, Transaction[]>;
+  next[targetPeriod] = [...next[targetPeriod], transaction];
 
-  return reassignGlobalTransactionIds(next, existingPeriods);
+  return reassignGlobalTransactionIds(next, uploadPeriods);
 }
 
 export function collectFlagFixes(

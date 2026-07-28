@@ -4,6 +4,12 @@ import { useRef, useState } from "react";
 import { PrivacyFlow } from "@/components/HeroSection";
 import { IconUpload } from "@/components/Icons";
 import { StatementSanitizerPanel } from "@/components/StatementSanitizerPanel";
+import {
+  isSupportedUploadFile,
+  SUPPORTED_UPLOAD_ACCEPT,
+  SUPPORTED_UPLOAD_LABEL,
+  unsupportedUploadMessage,
+} from "@/lib/upload-formats";
 
 type Props = {
   onUpload: (files: File[]) => void;
@@ -13,7 +19,7 @@ type Props = {
 
 function pickSupportedFiles(fileList: FileList | File[] | null | undefined) {
   if (!fileList) return [];
-  return Array.from(fileList).filter((file) => /\.(csv|xlsx)$/i.test(file.name));
+  return Array.from(fileList).filter((file) => isSupportedUploadFile(file.name));
 }
 
 export function UploadZone({ onUpload, loading, onError }: Props) {
@@ -27,7 +33,7 @@ export function UploadZone({ onUpload, loading, onError }: Props) {
 
     const files = pickSupportedFiles(fileList);
     if (!files.length) {
-      onError?.("Upload one or more .csv or .xlsx files with matching column headers.");
+      onError?.(unsupportedUploadMessage());
       return;
     }
 
@@ -62,10 +68,11 @@ export function UploadZone({ onUpload, loading, onError }: Props) {
     <section className="upload-zone card upload-zone-home">
       <h2>Upload your statements</h2>
       <p className="upload-subtitle">
-        Upload one or more CSV or Excel files with the <strong>same column headers</strong>{" "}
+        Upload one or more spreadsheet files with the <strong>same column headers</strong>{" "}
         (<strong>Merchant</strong>, <strong>Category</strong>, <strong>Amount</strong>, and{" "}
         <strong>Date</strong> optional — highly recommended for more detailed analysis and reports).
-        Each file can represent a separate month. No bank login required.
+        Supported formats: {SUPPORTED_UPLOAD_LABEL}. Each file can represent a separate month. No
+        bank login required.
       </p>
 
       <StatementSanitizerPanel />
@@ -94,11 +101,11 @@ export function UploadZone({ onUpload, loading, onError }: Props) {
         <div className="drop-title">
           {loading ? "Analyzing your files..." : "Drag & drop your files here"}
         </div>
-        <div className="drop-hint">or click to browse · multiple .csv · .xlsx</div>
+        <div className="drop-hint">or click to browse · {SUPPORTED_UPLOAD_LABEL}</div>
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,.xlsx"
+          accept={SUPPORTED_UPLOAD_ACCEPT}
           multiple
           hidden
           onChange={(event) => {

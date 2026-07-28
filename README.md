@@ -23,6 +23,15 @@ Your transaction data **never leaves your device**.
 
 Install **Node.js** from https://nodejs.org
 
+**From the project root:**
+
+```powershell
+cd C:\Users\vakht\Projects\cost-income-analyzer
+.\run.ps1
+```
+
+**Or from the frontend folder:**
+
 ```powershell
 cd C:\Users\vakht\Projects\cost-income-analyzer\frontend
 npm install
@@ -30,6 +39,17 @@ npm run dev
 ```
 
 Open **http://localhost:3000**
+
+If port 3000 is busy:
+
+```powershell
+cd frontend
+$env:PORT=3003; npm run dev
+```
+
+Then open **http://localhost:3003**
+
+> **Note:** `npm run dev` must be run from the `frontend` folder — there is no `package.json` in the project root. The root `run.ps1` starts the frontend for you.
 
 Upload `sample_transactions.csv` from the project root to test.
 

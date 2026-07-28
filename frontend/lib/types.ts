@@ -54,6 +54,9 @@ export type HealthScoreMetrics = {
   avg_daily_spend: number;
   non_essential_of_expenses_pct: number;
   expense_volatility_pct: number | null;
+  expense_concentration_hhi: number;
+  top_category_share_pct: number;
+  diversification_score: number;
 };
 
 export type HealthScore = {
@@ -70,6 +73,31 @@ export type CategoryDriver = {
   merchant_name: string;
   delta: number;
   transaction_amount: number;
+};
+
+export type CategoryVolatility = {
+  category: string;
+  volatility_pct: number;
+  period_totals: { period: string; total: number }[];
+  avg_total: number;
+};
+
+export type AnomalyFlag = {
+  merchant_name: string;
+  category: string;
+  amount: number;
+  period: string;
+  transaction_count: number;
+  multiplier: number;
+  description: string;
+};
+
+export type CategoryTrend = {
+  category: string;
+  current_total: number;
+  prior_total: number;
+  change_pct: number;
+  trend: "Spike" | "Up" | "Down" | "Stable";
 };
 
 export type CategoryChange = {
@@ -102,8 +130,14 @@ export type CategorizationFlag = {
   amount: number;
 };
 
+export type PeriodReportSelection =
+  | { mode: "single"; period: string }
+  | { mode: "range"; start: string; end: string };
+
 export type AnalyzeResponse = {
   periods: string[];
+  /** Period labels fixed at upload time (CSV files, Period column, or Excel sheets). */
+  upload_periods: string[];
   period_analysis: Record<string, PeriodAnalysis>;
   period_rows: Record<string, Transaction[]>;
   comparison: PeriodComparison | null;

@@ -1,10 +1,12 @@
 import { analyzeTransactions } from "@/lib/analyzer";
+import { isExpenseTransaction, isTransferTransaction } from "@/lib/transaction-filters";
 import { CategoryChange, CategoryDriver, PeriodComparison, Transaction } from "@/lib/types";
 import { pctChange, round2 } from "@/lib/utils";
 
 function categoryTotals(rows: Transaction[]) {
   const map = new Map<string, number>();
   for (const row of rows) {
+    if (isTransferTransaction(row)) continue;
     const key = `${row.transaction_type}::${row.category}`;
     map.set(key, (map.get(key) ?? 0) + row.abs_amount);
   }

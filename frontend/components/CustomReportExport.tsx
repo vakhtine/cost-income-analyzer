@@ -1,15 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { PeriodRangeSlider } from "@/components/PeriodRangeSlider";
 import {
   CUSTOM_REPORT_LABELS,
   CustomReportPayload,
   CustomReportType,
   exportCustomReports,
+  PeriodReportSelection,
 } from "@/lib/export-custom-reports";
 
 type Props = {
-  buildPayload: (periodLabel: string) => CustomReportPayload | Promise<CustomReportPayload>;
+  buildPayload: (
+    selection: PeriodReportSelection
+  ) => CustomReportPayload | Promise<CustomReportPayload>;
   disabled?: boolean;
   availableTypes?: CustomReportType[];
   periods?: string[];
@@ -33,10 +37,37 @@ export function CustomReportExport({
     "expenses-by-category",
     "financial-health",
   ]);
+  const [periodMode, setPeriodMode] = useState<"single" | "range">("single");
   const [reportPeriod, setReportPeriod] = useState("");
+  const [rangeStartIndex, setRangeStartIndex] = useState(0);
+  const [rangeEndIndex, setRangeEndIndex] = useState(
+    Math.max(0, (periods?.length ?? 1) - 1)
+  );
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const canUseRange = (periods?.length ?? 0) >= 2;
+
+  const selection = useMemo((): PeriodReportSelection | null => {
+    if (!periods?.length) return null;
+    if (periodMode === "range" && canUseRange) {
+      const start = Math.min(rangeStartIndex, rangeEndIndex);
+      const end = Math.max(rangeStartIndex, rangeEndIndex);
+      return { mode: "range", start: periods[start], end: periods[end] };
+    }
+    const period = reportPeriod || periods[periods.length - 1];
+    if (requirePeriodSelection && !reportPeriod) return null;
+    return { mode: "single", period };
+  }, [
+    periodMode,
+    canUseRange,
+    rangeStartIndex,
+    rangeEndIndex,
+    reportPeriod,
+    periods,
+    requirePeriodSelection,
+  ]);
 
   function toggleType(type: CustomReportType) {
     setSelected((current) =>
@@ -50,8 +81,12 @@ export function CustomReportExport({
       return;
     }
 
-    if (requirePeriodSelection && !reportPeriod) {
-      setError("Choose a period for which the report is to be generated.");
+    if (!selection) {
+      setError(
+        periodMode === "range"
+          ? "Choose a valid period range."
+          : "Choose a period for which the report is to be generated."
+      );
       return;
     }
 
@@ -59,8 +94,7 @@ export function CustomReportExport({
     setStatus("");
     setLoading(true);
     try {
-      const periodLabel = requirePeriodSelection ? reportPeriod : reportPeriod || periods?.[0] || "";
-      await exportCustomReports(selected, await buildPayload(periodLabel));
+      await exportCustomReports(selected, await buildPayload(selection));
       setStatus("PDF report downloaded successfully.");
       window.setTimeout(() => setStatus(""), 8000);
     } catch (exportError) {
@@ -83,26 +117,61 @@ export function CustomReportExport({
       </div>
 
       {periods?.length ? (
-        <label className="custom-report-period-label">
-          Report period
-          <select
-            value={reportPeriod}
-            onChange={(event) => {
-              setReportPeriod(event.target.value);
-              setError("");
-            }}
-            disabled={disabled || loading}
-          >
-            <option value="">
-              {requirePeriodSelection ? "Select a period..." : "Latest period"}
-            </option>
-            {periods.map((period) => (
-              <option key={period} value={period}>
-                {period}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="custom-report-period-section">
+          <div className="custom-report-period-tabs">
+            <button
+              type="button"
+              className={`tab ${periodMode === "single" ? "active" : ""}`}
+              onClick={() => setPeriodMode("single")}
+              disabled={disabled || loading}
+            >
+              Single period
+            </button>
+            <button
+              type="button"
+              className={`tab ${periodMode === "range" ? "active" : ""}`}
+              onClick={() => setPeriodMode("range")}
+              disabled={disabled || loading || !canUseRange}
+            >
+              Period range
+            </button>
+          </div>
+
+          {periodMode === "single" ? (
+            <label className="custom-report-period-label">
+              Report period
+              <select
+                value={reportPeriod}
+                onChange={(event) => {
+                  setReportPeriod(event.target.value);
+                  setError("");
+                }}
+                disabled={disabled || loading}
+              >
+                <option value="">
+                  {requirePeriodSelection ? "Select a period..." : "Latest period"}
+                </option>
+                {periods.map((period) => (
+                  <option key={period} value={period}>
+                    {period}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <PeriodRangeSlider
+              periods={periods}
+              startIndex={rangeStartIndex}
+              endIndex={rangeEndIndex}
+              onChange={(start, end) => {
+                setRangeStartIndex(start);
+                setRangeEndIndex(end);
+                setError("");
+              }}
+              disabled={disabled || loading}
+            />
+          )}
+        </div>
       ) : null}
 
       <div className="custom-report-options">

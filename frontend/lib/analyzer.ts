@@ -1,9 +1,27 @@
+import {
+  filterExpenseTransactions,
+  filterIncomeTransactions,
+  isExpenseTransaction,
+} from "@/lib/transaction-filters";
 import { CategorySummary, MerchantSummary, PeriodAnalysis, Transaction } from "@/lib/types";
 import { round2 } from "@/lib/utils";
 
-function groupCategories(rows: Transaction[], type: "income" | "expense") {
+function groupExpenseCategories(rows: Transaction[]) {
   const map = new Map<string, { total: number; count: number }>();
-  for (const row of rows.filter((item) => item.transaction_type === type)) {
+  for (const row of filterExpenseTransactions(rows)) {
+    const current = map.get(row.category) ?? { total: 0, count: 0 };
+    current.total += row.abs_amount;
+    current.count += 1;
+    map.set(row.category, current);
+  }
+  return [...map.entries()]
+    .map(([category, value]) => ({ category, ...value }))
+    .sort((a, b) => b.total - a.total);
+}
+
+function groupIncomeCategories(rows: Transaction[]) {
+  const map = new Map<string, { total: number; count: number }>();
+  for (const row of filterIncomeTransactions(rows)) {
     const current = map.get(row.category) ?? { total: 0, count: 0 };
     current.total += row.abs_amount;
     current.count += 1;
@@ -26,14 +44,15 @@ function detectUnusual(expenseCategories: CategorySummary[]) {
 }
 
 export function analyzeTransactions(rows: Transaction[]): PeriodAnalysis {
-  const incomeRows = rows.filter((row) => row.transaction_type === "income");
-  const expenseRows = rows.filter((row) => row.transaction_type === "expense");
-  const total_income = incomeRows.reduce((sum, row) => sum + row.abs_amount, 0);
-  const total_expenses = expenseRows.reduce((sum, row) => sum + row.abs_amount, 0);
-  const net_savings = total_income - total_expenses;
-  const savings_rate = total_income ? (net_savings / total_income) * 100 : 0;
+  const incomeRows = filterIncomeTransactions(rows);
+  const expenseRows = filterExpenseTransactions(rows);
+  const total_income = round2(incomeRows.reduce((sum, row) => sum + row.abs_amount, 0));
+  const expenseGroups = groupExpenseCategories(rows);
+  const total_expenses = round2(expenseGroups.reduce((sum, item) => sum + item.total, 0));
+  const net_savings = round2(total_income - total_expenses);
+  const savings_rate = total_income ? round2((net_savings / total_income) * 100) : 0;
 
-  const income_categories: CategorySummary[] = groupCategories(rows, "income").map((item) => ({
+  const income_categories: CategorySummary[] = groupIncomeCategories(rows).map((item) => ({
     category: item.category,
     total: round2(item.total),
     count: item.count,
@@ -41,7 +60,7 @@ export function analyzeTransactions(rows: Transaction[]): PeriodAnalysis {
     pct_of_expenses: null,
   }));
 
-  const expense_categories: CategorySummary[] = groupCategories(rows, "expense").map((item) => ({
+  const expense_categories: CategorySummary[] = expenseGroups.map((item) => ({
     category: item.category,
     total: round2(item.total),
     count: item.count,
@@ -67,12 +86,20 @@ export function analyzeTransactions(rows: Transaction[]): PeriodAnalysis {
 
   const unusual_expenses = detectUnusual(expense_categories);
   const insights: string[] = [];
-  if (!total_income) insights.push("No income categories were found. Add rows with categories like Salary or Pension.");
+  if (!total_income) {
+    insights.push("No income categories were found. Add rows with categories like Salary or Pension.");
+  }
   if (!total_expenses) insights.push("No expense categories were found.");
   if (total_income && total_expenses) {
-    if (savings_rate >= 20) insights.push(`You are saving ${savings_rate.toFixed(1)}% of income, which is a healthy rate.`);
-    else if (savings_rate >= 0) insights.push(`You are saving ${savings_rate.toFixed(1)}% of income. Consider targeting 20% or more.`);
-    else insights.push(`Expenses exceed income by $${Math.abs(net_savings).toFixed(2)}. Review your largest spending categories.`);
+    if (savings_rate >= 20) {
+      insights.push(`You are saving ${savings_rate.toFixed(1)}% of income, which is a healthy rate.`);
+    } else if (savings_rate >= 0) {
+      insights.push(`You are saving ${savings_rate.toFixed(1)}% of income. Consider targeting 20% or more.`);
+    } else {
+      insights.push(
+        `Expenses exceed income by $${Math.abs(net_savings).toFixed(2)}. Review your largest spending categories.`
+      );
+    }
   }
   if (expense_categories[0]) {
     const largest = expense_categories[0];
@@ -87,14 +114,22 @@ export function analyzeTransactions(rows: Transaction[]): PeriodAnalysis {
   }
 
   return {
-    total_income: round2(total_income),
-    total_expenses: round2(total_expenses),
-    net_savings: round2(net_savings),
-    savings_rate: round2(savings_rate),
+    total_income,
+    total_expenses,
+    net_savings,
+    savings_rate,
     income_categories,
     expense_categories,
     top_merchants,
     unusual_expenses,
     insights,
   };
+}
+
+export function expenseCategoryTotal(rows: Transaction[], category: string) {
+  return round2(
+    rows
+      .filter((row) => isExpenseTransaction(row) && row.category === category)
+      .reduce((sum, row) => sum + row.abs_amount, 0)
+  );
 }

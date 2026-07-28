@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { appendEditableRowToPeriodRows } from "@/lib/categorization";
+import { resolvePeriodForDate } from "@/lib/period-utils";
 import { rebuildAnalyzeResponse } from "@/lib/rebuild";
 import { AnalyzeResponse } from "@/lib/types";
 
@@ -17,7 +18,8 @@ const INCOME_TYPES = [
 type Props = {
   data: AnalyzeResponse;
   periodLabel: string;
-  onUpdate: (data: AnalyzeResponse) => void;
+  periods?: string[];
+  onUpdate: (data: AnalyzeResponse, savedPeriod?: string) => void;
   context?: "clean" | "analyze";
   embedded?: boolean;
 };
@@ -37,18 +39,29 @@ function hasIncomeInPeriod(data: AnalyzeResponse, periodLabel: string) {
 export function IncomeEntryPrompt({
   data,
   periodLabel,
+  periods,
   onUpdate,
   context = "analyze",
   embedded = false,
 }: Props) {
+  const availablePeriods = periods?.length ? periods : data.periods;
   const hasIncome =
     context === "clean" ? hasAnyIncome(data) : hasIncomeInPeriod(data, periodLabel);
   const [wantsToAdd, setWantsToAdd] = useState<boolean | null>(hasIncome ? true : null);
+  const [entryPeriod, setEntryPeriod] = useState(
+    periodLabel || (availablePeriods[availablePeriods.length - 1] ?? "")
+  );
   const [merchant, setMerchant] = useState("");
   const [incomeType, setIncomeType] = useState(INCOME_TYPES[0]);
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState("");
   const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    if (periodLabel && availablePeriods.includes(periodLabel)) {
+      setEntryPeriod(periodLabel);
+    }
+  }, [periodLabel, availablePeriods]);
 
   if (!embedded && !hasIncome && wantsToAdd === false) {
     return null;
@@ -66,6 +79,13 @@ export function IncomeEntryPrompt({
         .reduce((max, row) => Math.max(max, row.id), -1) + 1;
     const category = incomeType;
 
+    const fallbackPeriod =
+      entryPeriod || periodLabel || (availablePeriods[availablePeriods.length - 1] ?? "");
+    const targetPeriod = date.trim()
+      ? resolvePeriodForDate(date, availablePeriods, fallbackPeriod)
+      : fallbackPeriod;
+
+    const canonicalPeriods = data.upload_periods ?? data.periods;
     const next = appendEditableRowToPeriodRows(
       {
         id: nextId,
@@ -74,16 +94,19 @@ export function IncomeEntryPrompt({
         amount: parsedAmount,
         date: date || "",
       },
-      periodLabel,
-      data.period_rows
+      targetPeriod,
+      data.period_rows,
+      canonicalPeriods
     );
 
-    onUpdate(rebuildAnalyzeResponse(next));
+    onUpdate(rebuildAnalyzeResponse(next, canonicalPeriods), targetPeriod);
     setMerchant("");
     setAmount("");
     setDate("");
     setWantsToAdd(true);
-    setStatus(`Added ${incomeType} from ${merchant.trim()}. You can add another income stream below.`);
+    setStatus(
+      `Added ${incomeType} from ${merchant.trim()} to period ${targetPeriod}. You can add another income stream below.`
+    );
   }
 
   const heading = hasIncome
@@ -145,6 +168,16 @@ export function IncomeEntryPrompt({
             </select>
           </label>
           <label>
+            Period
+            <select value={entryPeriod} onChange={(event) => setEntryPeriod(event.target.value)}>
+              {availablePeriods.map((period) => (
+                <option key={period} value={period}>
+                  {period}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Amount
             <input
               type="number"
@@ -156,7 +189,7 @@ export function IncomeEntryPrompt({
             />
           </label>
           <label>
-            Date
+            Date (optional — overrides period if set)
             <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
           </label>
           <button type="button" className="tab active" onClick={handleSave}>

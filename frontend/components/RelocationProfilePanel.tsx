@@ -21,14 +21,18 @@ const TIMELINE_OPTIONS: { id: RelocationTimeline; label: string }[] = [
 
 type Props = {
   analysis: PeriodAnalysis;
-  periodLabel?: string;
+  periods: string[];
+  profilePeriod: string;
+  onProfilePeriodChange: (period: string) => void;
   defaultCity?: string;
   householdSize?: number;
 };
 
 export function RelocationProfilePanel({
   analysis,
-  periodLabel,
+  periods,
+  profilePeriod,
+  onProfilePeriodChange,
   defaultCity = "",
   householdSize = 1,
 }: Props) {
@@ -130,16 +134,22 @@ export function RelocationProfilePanel({
         <h3>Your relocation profile</h3>
         <p>
           Choose a destination city and optional savings. Runway, move readiness, and income
-          coverage use your uploaded income
-          {periodLabel ? (
-            <>
-              {" "}
-              for period <strong>{periodLabel}</strong>
-            </>
-          ) : null}{" "}
-          and that city&apos;s estimated monthly costs — stored only in this browser session.
+          coverage use your uploaded income for period{" "}
+          <strong>{profilePeriod}</strong> and that city&apos;s estimated monthly costs — stored
+          only in this browser session.
         </p>
       </div>
+
+      <label className="analyze-period-label relocation-profile-period-label">
+        Income period
+        <select value={profilePeriod} onChange={(event) => onProfilePeriodChange(event.target.value)}>
+          {periods.map((period) => (
+            <option key={period} value={period}>
+              {period}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <div className="profile-input-grid">
         <label>

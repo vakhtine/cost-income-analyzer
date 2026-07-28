@@ -1,7 +1,9 @@
 "use client";
 
+import { PeriodSelect } from "@/components/PeriodSelect";
 import { useCurrency } from "@/lib/currency-context";
 import { AnalyzeResponse, PeriodAnalysis } from "@/lib/types";
+import { countUnknownTransactions } from "@/lib/categorization";
 
 type Props = {
   data: AnalyzeResponse;
@@ -10,13 +12,15 @@ type Props = {
 type SnapshotProps = {
   analysis: PeriodAnalysis;
   periodLabel: string;
+  periods: string[];
+  selectedPeriod: string;
+  onPeriodChange: (period: string) => void;
 };
 
 export function CleanStepSummary({ data }: Props) {
-  const unknownCount = Object.values(data.period_rows)
-    .flat()
-    .filter((row) => row.category.trim().toLowerCase() === "unknown").length;
+  const unknownCount = countUnknownTransactions(Object.values(data.period_rows).flat());
   const flagCount = data.categorization_flags.length;
+  const uploadPeriods = data.upload_periods ?? data.periods;
 
   return (
     <section className="step-summary card">
@@ -24,10 +28,10 @@ export function CleanStepSummary({ data }: Props) {
       <div className="step-summary-grid">
         <div className="step-summary-item">
           <span>Periods loaded</span>
-          <strong>{data.periods.length}</strong>
+          <strong>{uploadPeriods.length}</strong>
         </div>
         <div className="step-summary-item">
-          <span>Unknown categories</span>
+          <span>Unknown / uncategorized</span>
           <strong className={unknownCount ? "warning" : ""}>{unknownCount}</strong>
         </div>
         <div className="step-summary-item">
@@ -36,20 +40,38 @@ export function CleanStepSummary({ data }: Props) {
         </div>
       </div>
       <p className="step-summary-note">
+        {uploadPeriods.length > 0 && (
+          <>
+            Periods: <strong>{uploadPeriods.join(", ")}</strong>.{" "}
+          </>
+        )}
         {unknownCount || flagCount
-          ? "Review unknown merchants and AI suggestions below so your relocation analysis is accurate."
+          ? "Review unknown or uncategorized merchants below so your analysis and relocation reports are accurate."
           : "Your categories look clean. You can move on to analysis or keep reviewing."}
       </p>
     </section>
   );
 }
 
-export function AnalyzeStepSummary({ analysis, periodLabel }: SnapshotProps) {
+export function AnalyzeStepSummary({
+  analysis,
+  periodLabel,
+  periods,
+  selectedPeriod,
+  onPeriodChange,
+}: SnapshotProps) {
   const { formatIncome, formatExpense } = useCurrency();
 
   return (
     <section className="step-summary card">
-      <h3>Your financial snapshot — {periodLabel}</h3>
+      <div className="section-heading section-heading-with-period">
+        <PeriodSelect
+          periods={periods}
+          value={selectedPeriod}
+          onChange={onPeriodChange}
+        />
+        <h3 className="section-heading-content">Your financial snapshot — {periodLabel}</h3>
+      </div>
       <div className="step-summary-grid">
         <div className="step-summary-item">
           <span>Monthly income</span>

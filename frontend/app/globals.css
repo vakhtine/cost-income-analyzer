@@ -1366,6 +1366,68 @@ th {
   padding: 14px 16px;
 }
 
+.section-heading-with-period {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px 20px;
+}
+
+.section-heading-with-period .analyze-period-label,
+.section-heading-with-period .custom-report-period-label {
+  margin: 0;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.section-heading-with-period .section-heading-content,
+.section-heading-with-period > h3,
+.section-heading-with-period > .analytics-subheading {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.period-details-header {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  align-items: center;
+  gap: 16px 20px;
+  margin: 4px 0 0;
+}
+
+.period-details-header .analyze-period-label {
+  margin: 0;
+}
+
+.period-details-header .analyze-section-heading {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .section-heading-with-period,
+  .period-details-header {
+    grid-template-columns: 1fr;
+  }
+
+  .section-heading-with-period .analyze-period-label,
+  .section-heading-with-period .custom-report-period-label,
+  .section-heading-with-period .section-heading-content,
+  .section-heading-with-period > h3,
+  .section-heading-with-period > .analytics-subheading {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+.analytics-subheading-row {
+  margin-top: 20px;
+  margin-bottom: 8px;
+}
+
+.analytics-subheading-row .analytics-subheading {
+  margin: 0;
+}
+
 .health-metrics-period-label {
   display: block;
   margin-bottom: 16px;
@@ -1566,6 +1628,147 @@ textarea {
   text-align: right;
 }
 
+.donut-chart-ui {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 16px;
+  align-items: center;
+}
+
+.donut-chart-ui-stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.donut-chart-ui-stacked .donut-chart-ui-ring {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  width: 100%;
+  max-width: 100%;
+  min-height: 0;
+}
+
+.donut-chart-ui-stacked .donut-chart-ui-ring svg {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+}
+
+.donut-chart-ui-stacked .donut-chart-ui-legend {
+  flex: 0 0 auto;
+}
+
+.donut-ui-label {
+  font-size: 11px;
+  fill: var(--muted);
+}
+
+.donut-ui-value {
+  font-size: 13px;
+  font-weight: 700;
+  fill: var(--primary-dark);
+}
+
+.donut-chart-ui-legend {
+  display: grid;
+  gap: 8px;
+}
+
+.donut-chart-ui-legend-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 8px;
+  align-items: start;
+  font-size: 0.88rem;
+}
+
+.donut-chart-ui-legend-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.category-label-text-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.category-top-merchants {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.period-exclusion-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.period-exclusion-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.period-exclusion-item.excluded {
+  background: #fff8e8;
+  border-color: #e8c96a;
+}
+
+.period-exclusion-tag {
+  margin-left: auto;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #9a6700;
+}
+
+.period-exclusion-summary {
+  padding: 12px 16px;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--primary);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+.metric-hint {
+  margin-top: -4px;
+  margin-bottom: 10px;
+  font-size: 0.88rem;
+}
+
+.donut-chart-ui-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.donut-chart-ui-legend-row strong {
+  font-size: 0.82rem;
+  color: var(--primary-dark);
+}
+
 @media (max-width: 900px) {
   .metrics,
   .grid-2 {
@@ -1589,9 +1792,98 @@ textarea {
 /* Advisor & period-change visuals */
 .advisor-hero-grid {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 200px 1fr 240px;
   gap: 24px;
   align-items: start;
+}
+
+.score-hero-ui {
+  text-align: center;
+  padding: 20px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(28, 43, 51, 0.08);
+}
+
+.score-hero-ui-excellent {
+  background: linear-gradient(135deg, #ecfdf5, #ffffff);
+  border-color: #a7f3d0;
+}
+
+.score-hero-ui-good {
+  background: linear-gradient(135deg, #eff6ff, #ffffff);
+  border-color: #bfdbfe;
+}
+
+.score-hero-ui-reasonable {
+  background: linear-gradient(135deg, #fffbeb, #ffffff);
+  border-color: #fde68a;
+}
+
+.score-hero-ui-poor {
+  background: linear-gradient(135deg, #fef2f2, #ffffff);
+  border-color: #fecaca;
+}
+
+.score-hero-ui-value {
+  font-size: 3.25rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--primary-dark);
+}
+
+.score-hero-ui-band {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rate);
+}
+
+.score-hero-ui-name {
+  margin-top: 6px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.advisor-radar-panel {
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(28, 43, 51, 0.06);
+}
+
+.advisor-radar-panel h4 {
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+
+.radar-chart-ui {
+  display: flex;
+  justify-content: center;
+}
+
+.radar-ui-label {
+  font-size: 10px;
+  fill: var(--muted);
+}
+
+.chart-panel-ui {
+  background: #fff;
+}
+
+.health-factor-bar-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.advisor-score-note {
+  margin-bottom: 14px;
 }
 
 .advisor-summary {
@@ -1788,6 +2080,10 @@ textarea {
 .health-factor-fill {
   height: 100%;
   border-radius: 999px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  min-width: 12px;
 }
 
 .health-factor-fill.health-good {
@@ -2726,6 +3022,144 @@ textarea {
   background: #fff;
 }
 
+.custom-report-period-section {
+  margin-bottom: 16px;
+}
+
+.custom-report-period-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.period-range-slider {
+  margin-bottom: 12px;
+}
+
+.period-range-track-wrap {
+  position: relative;
+  height: 36px;
+  margin: 12px 0 8px;
+}
+
+.period-range-track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 6px;
+  transform: translateY(-50%);
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+
+.period-range-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #0f766e, #14b8a6);
+  border-radius: 999px;
+}
+
+.period-range-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 36px;
+  margin: 0;
+  background: none;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.period-range-thumb::-webkit-slider-thumb {
+  pointer-events: all;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #0f766e;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  cursor: grab;
+}
+
+.period-range-thumb::-moz-range-thumb {
+  pointer-events: all;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #0f766e;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  cursor: grab;
+}
+
+.period-range-thumb-end {
+  z-index: 2;
+}
+
+.period-range-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.period-range-label.active {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.period-range-summary {
+  margin: 8px 0 0;
+  font-size: 0.9rem;
+}
+
+.type-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.type-pill-recurring {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.type-pill-variable {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.analytics-subheading {
+  margin: 16px 0 8px;
+  font-size: 1rem;
+}
+
+.sparkline-wrap {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.sparkline-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
 .custom-report-options {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -2745,13 +3179,227 @@ textarea {
 }
 
 .health-metrics-panel {
-  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 120px);
+  background: linear-gradient(135deg, #faf5ff 0%, #ffffff 55%);
+  border-color: #ddd6fe;
+}
+
+.health-metrics-grouped {
+  display: grid;
+  gap: 22px;
+}
+
+.health-metrics-section-title {
+  margin: 0 0 12px;
+  font-size: 0.92rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--primary-dark);
+}
+
+.health-metric-insight-card {
+  align-items: flex-start;
+}
+
+.health-metric-insight-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.health-metric-insight-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.health-metric-insight-value {
+  font-size: 1.05rem;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.health-metric-insight-detail {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.metric-tone-positive {
+  color: #047857;
+}
+
+.metric-tone-warning {
+  color: #b45309;
+}
+
+.metric-tone-negative {
+  color: #b91c1c;
+}
+
+.metric-tone-info {
+  color: var(--ink);
+}
+
+td.metric-tone-negative,
+.metric-tone-negative.health-metric-insight-value {
+  color: #b91c1c;
+  font-weight: 700;
 }
 
 .health-metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
+}
+
+.quick-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.quick-stat-card {
+  border: 1.5px solid #1c2b33;
+  border-radius: 12px;
+  padding: 14px 16px;
+  min-height: 88px;
+}
+
+.quick-stat-excellent {
+  background: #d1fae5;
+}
+
+.quick-stat-good {
+  background: #fef3c7;
+}
+
+.quick-stat-bad {
+  background: #fee2e2;
+}
+
+.quick-stat-neutral {
+  background: #f3f4f6;
+}
+
+.quick-stat-detail {
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #374151;
+}
+
+.quick-stat-card strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: #1c2b33;
+}
+
+.quick-stat-card span {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #4b5563;
+  font-weight: 600;
+}
+
+.advisor-hero-grid-compact {
+  grid-template-columns: 200px 1fr;
+}
+
+.clean-review-prompt-note {
+  margin: 0 0 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.dashboard-charts-compact {
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.chart-card-compact {
+  padding: 14px 16px;
+}
+
+.chart-card-compact h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.dashboard-charts-compact .simple-chart {
+  gap: 8px;
+}
+
+.dashboard-charts-compact .simple-chart-row {
+  gap: 8px;
+}
+
+.dashboard-charts-compact .simple-chart-label .category-icon-badge {
+  width: 32px;
+  height: 32px;
+}
+
+.dashboard-charts-compact .simple-chart-label-text {
+  font-size: 0.82rem;
+}
+
+.dashboard-charts-compact .simple-chart-track {
+  height: 10px;
+}
+
+.dashboard-charts-compact .simple-chart-value {
+  font-size: 0.78rem;
+}
+
+.dashboard-charts-compact .income-entry-prompt.embedded {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+}
+
+.dashboard-charts-compact .income-entry-prompt.embedded h4 {
+  font-size: 0.88rem;
+  margin: 0 0 8px;
+}
+
+.donut-chart-ui-compact.donut-chart-ui-stacked {
+  min-height: 0;
+  gap: 10px;
+}
+
+.donut-chart-ui-compact .donut-chart-ui-ring {
+  min-height: 0;
+  max-height: 160px;
+}
+
+.donut-chart-ui-compact .donut-chart-ui-ring svg {
+  width: 100%;
+  height: 100%;
+}
+
+.donut-chart-ui-compact .donut-chart-ui-legend-row {
+  font-size: 0.8rem;
+}
+
+.expense-donut-card.chart-card-compact {
+  min-height: 0;
+  max-width: 340px;
+}
+
+@media (max-width: 900px) {
+  .quick-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .advisor-hero-grid-compact {
+    grid-template-columns: 1fr;
+  }
 }
 
 .health-metric-card {

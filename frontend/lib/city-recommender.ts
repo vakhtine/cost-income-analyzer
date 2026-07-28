@@ -14,6 +14,33 @@ export type CityRecommendation = {
   costProfile?: CityCostProfile;
 };
 
+export function applyRecommendationRankScores(
+  recommendations: CityRecommendation[]
+): CityRecommendation[] {
+  if (recommendations.length === 0) return recommendations;
+
+  const bestBalance = recommendations[0].projectedBalance;
+  let previousScore = 100;
+
+  return recommendations.map((entry, index) => {
+    if (index === 0) {
+      return { ...entry, score: 100 };
+    }
+
+    let score: number;
+    if (bestBalance > 0) {
+      score = Math.round((entry.projectedBalance / bestBalance) * 100);
+    } else {
+      score = Math.max(1, 85 - (index - 1) * 15);
+    }
+
+    score = Math.min(score, previousScore - 1);
+    score = Math.max(1, Math.min(99, score));
+    previousScore = score;
+    return { ...entry, score };
+  });
+}
+
 export async function recommendCitiesForSpending(
   rows: Transaction[],
   periodAnalysis: PeriodAnalysis,
@@ -52,8 +79,10 @@ export async function recommendCitiesForSpending(
 
   const costProfiles = await fetchCityCostProfiles(recommendations.map((entry) => entry.city));
 
-  return recommendations.map((entry) => ({
-    ...entry,
-    costProfile: costProfiles[entry.city],
-  }));
+  return applyRecommendationRankScores(
+    recommendations.map((entry) => ({
+      ...entry,
+      costProfile: costProfiles[entry.city],
+    }))
+  );
 }

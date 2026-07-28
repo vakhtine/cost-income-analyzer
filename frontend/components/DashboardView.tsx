@@ -1,8 +1,13 @@
 "use client";
 
+import { useMemo } from "react";
 import { CategoryIcon } from "@/components/CategoryIcon";
+import { DonutChart } from "@/components/DonutChart";
+import { PeriodSelect } from "@/components/PeriodSelect";
 import { IncomeEntryPrompt } from "@/components/IncomeEntryPrompt";
 import { formatCategoryDisplayName } from "@/lib/category-icons";
+import { topMerchantsByCategoryMap } from "@/lib/category-merchants";
+import { UI_LABELS } from "@/lib/ui-labels";
 import { useCurrency } from "@/lib/currency-context";
 import { AnalyzeResponse, PeriodAnalysis } from "@/lib/types";
 type Props = {
@@ -10,7 +15,10 @@ type Props = {
   showCharts?: boolean;
   data?: AnalyzeResponse;
   periodLabel?: string;
-  onUpdate?: (data: AnalyzeResponse) => void;
+  periods?: string[];
+  selectedPeriod?: string;
+  onPeriodChange?: (period: string) => void;
+  onUpdate?: (data: AnalyzeResponse, savedPeriod?: string) => void;
 };
 
 type InsightTone = "positive" | "warning" | "negative" | "info" | "alert";
@@ -117,6 +125,9 @@ export function DashboardView({
   showCharts = true,
   data,
   periodLabel,
+  periods,
+  selectedPeriod,
+  onPeriodChange,
   onUpdate,
 }: Props) {
   const { formatIncome, formatExpense } = useCurrency();
@@ -127,6 +138,21 @@ export function DashboardView({
   const expenseData = analysis.expense_categories.map((item) => ({
     name: item.category,
     value: item.total,
+  }));
+
+  const merchantSourceRows = useMemo(() => {
+    if (!data) return [];
+    return Object.values(data.period_rows).flat();
+  }, [data]);
+
+  const merchantsMap = useMemo(
+    () => topMerchantsByCategoryMap(merchantSourceRows),
+    [merchantSourceRows]
+  );
+
+  const expenseDonutData = expenseData.slice(0, 5).map((item) => ({
+    ...item,
+    merchants: merchantsMap.get(item.name),
   }));
 
   return (
@@ -150,13 +176,14 @@ export function DashboardView({
       </section>
 
       {showCharts && (
-        <section className="grid-2">
-          <div className="card">
-            <h3>Income by category</h3>
+        <section className="grid-2 dashboard-charts-compact">
+          <div className="card chart-card-compact">
+            <h3>{UI_LABELS.incomeByCategory}</h3>
             {data && periodLabel && onUpdate && (
               <IncomeEntryPrompt
                 data={data}
                 periodLabel={periodLabel}
+                periods={periods ?? data.periods}
                 onUpdate={onUpdate}
                 context="analyze"
                 embedded
@@ -173,23 +200,44 @@ export function DashboardView({
               />
             )}
           </div>
-          <div className="card">
-            <h3>Expenses by category</h3>
-            <SimpleBarChart
-              data={expenseData}
-              colors={["#F59E0B", "#F97316", "#EF4444", "#8B5CF6", "#6366F1"]}
-              showCategoryIcons
-              formatValue={formatExpense}
-            />          </div>
+          <div className="card chart-card-compact expense-donut-card">
+            <h3>{UI_LABELS.expensesByCategory}</h3>
+            {expenseData.length > 5 ? (
+              <DonutChart
+                data={expenseDonutData}
+                formatValue={formatExpense}
+                layout="stacked"
+                compact
+              />
+            ) : (
+              <SimpleBarChart
+                data={expenseData}
+                colors={["#F59E0B", "#F97316", "#EF4444", "#8B5CF6", "#6366F1"]}
+                showCategoryIcons
+                formatValue={formatExpense}
+              />
+            )}
+          </div>
         </section>
       )}
 
       <section className="card">
-        <h3>Category breakdown</h3>
+        <div className="section-heading section-heading-with-period">
+          {periods?.length && selectedPeriod && onPeriodChange ? (
+            <PeriodSelect
+              periods={periods}
+              value={selectedPeriod}
+              onChange={onPeriodChange}
+            />
+          ) : (
+            <span />
+          )}
+          <h3 className="section-heading-content">{UI_LABELS.categoryBreakdown}</h3>
+        </div>
         <table>
           <thead>
             <tr>
-              <th>Category</th>
+              <th>{UI_LABELS.incomeExpenseCategory}</th>
               <th>Total</th>
               <th>% out of total income</th>
               <th>% out of total expenses</th>

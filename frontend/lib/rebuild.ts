@@ -1,8 +1,27 @@
 import { analyzeTransactions } from "@/lib/analyzer";
 import { buildPeriodAdvice, detectCategorizationIssues } from "@/lib/advisor";
-import { calculateHealthScore, healthSummary } from "@/lib/health-score";
+import {
+  calculateHealthScore,
+  calculateHealthScoreForPeriod,
+  healthSummary,
+} from "@/lib/health-score";
 import { comparePeriods } from "@/lib/period-analyzer";
-import { AnalyzeResponse, Transaction } from "@/lib/types";
+import {
+  consolidateRowsIntoUploadPeriods,
+  deriveUploadPeriods,
+  filterReportablePeriodOrder,
+  orderedPeriodKeys,
+} from "@/lib/period-utils";
+import {
+  combinePeriodRowsInRange,
+  periodRangeLabel,
+  slicePeriodOrder,
+} from "@/lib/spending-metrics";
+import {
+  normalizePeriodRows,
+  periodHasReportableData,
+} from "@/lib/transaction-filters";
+import { AnalyzeResponse, PeriodAnalysis, PeriodReportSelection, Transaction } from "@/lib/types";
 
 export const AVERAGE_PERIOD_LABEL = "__average__";
 
@@ -73,34 +92,48 @@ export function buildAveragePeriodRows(period_rows: Record<string, Transaction[]
 }
 
 export function rebuildAnalyzeResponse(
-  period_rows: Record<string, Transaction[]>
+  period_rows: Record<string, Transaction[]>,
+  canonicalPeriods?: string[]
 ): AnalyzeResponse {
-  const periodNames = Object.keys(period_rows);
+  const normalizedRows = normalizePeriodRows(period_rows);
+  const uploadPeriods = canonicalPeriods?.length
+    ? canonicalPeriods
+    : filterReportablePeriodOrder(
+        deriveUploadPeriods(normalizedRows),
+        normalizedRows,
+        periodHasReportableData
+      );
+  const consolidatedRows = consolidateRowsIntoUploadPeriods(normalizedRows, uploadPeriods);
+  const reportableRows = Object.fromEntries(
+    uploadPeriods.map((name) => [name, consolidatedRows[name] ?? []])
+  );
+
   const period_analysis: AnalyzeResponse["period_analysis"] = {};
-  for (const name of periodNames) {
-    period_analysis[name] = analyzeTransactions(period_rows[name]);
+  for (const name of uploadPeriods) {
+    period_analysis[name] = analyzeTransactions(reportableRows[name]);
   }
 
   let comparison = null;
-  if (periodNames.length >= 2) {
-    const previous = periodNames[periodNames.length - 2];
-    const current = periodNames[periodNames.length - 1];
+  if (uploadPeriods.length >= 2) {
+    const previous = uploadPeriods[uploadPeriods.length - 2];
+    const current = uploadPeriods[uploadPeriods.length - 1];
     comparison = comparePeriods(
-      period_rows[previous],
-      period_rows[current],
+      reportableRows[previous],
+      reportableRows[current],
       previous,
       current
     );
   }
 
   return {
-    periods: periodNames,
+    periods: uploadPeriods,
+    upload_periods: uploadPeriods,
     period_analysis,
-    period_rows,
+    period_rows: reportableRows,
     comparison,
-    health_score: calculateHealthScore(period_rows),
-    categorization_flags: detectCategorizationIssues(period_rows),
-    advisor_notes: buildPeriodAdvice(period_rows, comparison),
+    health_score: calculateHealthScore(reportableRows),
+    categorization_flags: detectCategorizationIssues(reportableRows),
+    advisor_notes: buildPeriodAdvice(reportableRows, comparison),
     privacy_notice:
       "Your file was analyzed only in this browser session. Nothing was uploaded to a server.",
   };
@@ -114,20 +147,73 @@ export function analyzeCombinedPeriods(period_rows: Record<string, Transaction[]
   return analyzeTransactions(combineAllPeriodRows(period_rows));
 }
 
+export function resolvePeriodReportSelection(
+  period_rows: Record<string, Transaction[]>,
+  periodOrder: string[],
+  selection: PeriodReportSelection
+): { periodLabel: string; periodAnalysis: PeriodAnalysis } {
+  const normalizedRows = normalizePeriodRows(period_rows);
+  const reportableOrder = filterReportablePeriodOrder(
+    periodOrder,
+    normalizedRows,
+    periodHasReportableData
+  );
+
+  if (selection.mode === "single") {
+    if (!reportableOrder.includes(selection.period)) {
+      throw new Error(`No transaction data is available for period ${selection.period}.`);
+    }
+    const rows = normalizedRows[selection.period] ?? [];
+    return {
+      periodLabel: selection.period,
+      periodAnalysis: analyzeTransactions(rows),
+    };
+  }
+
+  const rangePeriods = slicePeriodOrder(reportableOrder, selection.start, selection.end).filter(
+    (period) => periodHasReportableData(normalizedRows[period] ?? [])
+  );
+  if (!rangePeriods.length) {
+    throw new Error("No transaction data is available for the selected period range.");
+  }
+
+  const rows = rangePeriods.flatMap((period) => normalizedRows[period] ?? []);
+  return {
+    periodLabel: periodRangeLabel(selection.start, selection.end),
+    periodAnalysis: analyzeTransactions(rows),
+  };
+}
+
 export function healthScoreForPeriodSelection(
   period_rows: Record<string, Transaction[]>,
-  selection: string
+  selection: string,
+  periodOrder?: string[]
 ) {
-  const periodNames = Object.keys(period_rows);
+  const normalizedRows = normalizePeriodRows(period_rows);
+  const orderedNames = filterReportablePeriodOrder(
+    periodOrder ?? orderedPeriodKeys(normalizedRows, Object.keys(normalizedRows)),
+    normalizedRows,
+    periodHasReportableData
+  );
 
   if (selection === "All periods") {
-    const combinedRows = combineAllPeriodRows(period_rows);
-    const combinedScore = calculateHealthScore({ "All periods": combinedRows });
-    if (periodNames.length <= 1) {
+    const combinedRows = combineAllPeriodRows(
+      Object.fromEntries(orderedNames.map((name) => [name, normalizedRows[name] ?? []]))
+    );
+    const combinedScore = calculateHealthScoreForPeriod(
+      { "All periods": combinedRows },
+      "All periods",
+      orderedNames
+    );
+    if (orderedNames.length <= 1) {
       return combinedScore;
     }
 
-    const multiPeriodScore = calculateHealthScore(period_rows);
+    const multiPeriodScore = calculateHealthScoreForPeriod(
+      normalizedRows,
+      orderedNames[orderedNames.length - 1],
+      orderedNames
+    );
     return {
       ...combinedScore,
       income_stability_score: multiPeriodScore.income_stability_score,
@@ -151,7 +237,7 @@ export function healthScoreForPeriodSelection(
       metrics: combinedScore.metrics
         ? {
             ...combinedScore.metrics,
-            period_count: periodNames.length,
+            period_count: orderedNames.length,
             income_volatility_pct: multiPeriodScore.metrics?.income_volatility_pct ?? null,
             expense_volatility_pct: multiPeriodScore.metrics?.expense_volatility_pct ?? null,
           }
@@ -160,12 +246,58 @@ export function healthScoreForPeriodSelection(
   }
 
   if (selection === AVERAGE_PERIOD_LABEL) {
-    return calculateHealthScore({
-      [AVERAGE_PERIOD_LABEL]: buildAveragePeriodRows(period_rows),
-    });
+    const averageRows = buildAveragePeriodRows(
+      Object.fromEntries(orderedNames.map((name) => [name, normalizedRows[name] ?? []]))
+    );
+    return calculateHealthScoreForPeriod(
+      {
+        ...Object.fromEntries(orderedNames.map((name) => [name, normalizedRows[name] ?? []])),
+        [AVERAGE_PERIOD_LABEL]: averageRows,
+      },
+      AVERAGE_PERIOD_LABEL,
+      orderedNames
+    );
   }
 
-  return calculateHealthScore({
-    [selection]: period_rows[selection] ?? [],
-  });
+  if (!orderedNames.includes(selection)) {
+    return calculateHealthScoreForPeriod({ [selection]: [] }, selection, orderedNames);
+  }
+
+  return calculateHealthScoreForPeriod(normalizedRows, selection, orderedNames);
+}
+
+export function healthScoreForReportSelection(
+  period_rows: Record<string, Transaction[]>,
+  periodOrder: string[],
+  selection: PeriodReportSelection
+) {
+  const normalizedRows = normalizePeriodRows(period_rows);
+  const reportableOrder = filterReportablePeriodOrder(
+    periodOrder,
+    normalizedRows,
+    periodHasReportableData
+  );
+
+  if (selection.mode === "single") {
+    return healthScoreForPeriodSelection(normalizedRows, selection.period, reportableOrder);
+  }
+
+  const rangePeriods = slicePeriodOrder(reportableOrder, selection.start, selection.end).filter(
+    (period) => periodHasReportableData(normalizedRows[period] ?? [])
+  );
+  if (!rangePeriods.length) {
+    const rangeLabel = periodRangeLabel(selection.start, selection.end);
+    return calculateHealthScoreForPeriod({ [rangeLabel]: [] }, rangeLabel, []);
+  }
+
+  const combinedRows = rangePeriods.flatMap((period) => normalizedRows[period] ?? []);
+  const rangeLabel = periodRangeLabel(selection.start, selection.end);
+  return calculateHealthScoreForPeriod(
+    {
+      ...Object.fromEntries(reportableOrder.map((name) => [name, normalizedRows[name] ?? []])),
+      [rangeLabel]: combinedRows,
+    },
+    rangeLabel,
+    rangePeriods
+  );
 }

@@ -32,6 +32,8 @@ function normalizeCategory(category: string) {
 export function formatCategoryDisplayName(category: string): string {
   const key = normalizeCategory(category);
   if (key.includes("telecommunication")) return "Telecom";
+  if (key === "grocery" || key === "groceries" || key.startsWith("grocer")) return "Groceries";
+  if (key.includes("mortgage")) return "Mortgage payment";
   return category;
 }
 
@@ -61,6 +63,9 @@ export function getCategoryMeta(category: string): CategoryMeta {
   }
   if (key.includes("grocer") || key.includes("food market") || key.includes("supermarket") || key === "grocery") {
     return { iconId: "grocery", tone: "cat-groceries", symbol: "🥑" };
+  }
+  if (key.includes("mortgage")) {
+    return { iconId: "rent", tone: "cat-rent", symbol: "🏠" };
   }
   if (key.includes("insurance")) {
     return { iconId: "insurance", tone: "cat-insurance", symbol: "🛡" };
