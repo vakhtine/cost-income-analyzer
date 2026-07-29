@@ -46,8 +46,8 @@ export function CleanStepSummary({ data }: Props) {
           </>
         )}
         {unknownCount || flagCount
-          ? "Review unknown or uncategorized merchants below so your analysis and relocation reports are accurate."
-          : "Your categories look clean. You can move on to analysis or keep reviewing."}
+          ? "Continue to the Review tab to categorize unknown merchants and add any missing expenses."
+          : "Your categories look clean. Continue to Review to add mortgage payments or confirm before analysis."}
       </p>
     </section>
   );

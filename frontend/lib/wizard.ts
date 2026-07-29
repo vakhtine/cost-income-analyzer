@@ -9,7 +9,7 @@ export type WizardStep =
 export const WIZARD_STEPS: { id: WizardStep; label: string; description: string }[] = [
   { id: "upload", label: "Upload", description: "Add your CSV or spreadsheet statements" },
   { id: "clean", label: "Clean", description: "Fix categories & transfers" },
-  { id: "review", label: "Review unknown", description: "Categorize unknown merchants" },
+  { id: "review", label: "Review", description: "Categorize unknowns & add missing expenses" },
   {
     id: "exclude-periods",
     label: "Exclude periods",
@@ -19,13 +19,8 @@ export const WIZARD_STEPS: { id: WizardStep; label: string; description: string 
   { id: "relocate", label: "Relocate", description: "Can you afford to move?" },
 ];
 
-export function visibleWizardSteps(
-  hasUnknownTransactions: boolean,
-  hasMultiplePeriods: boolean
-) {
-  let steps = hasUnknownTransactions
-    ? WIZARD_STEPS
-    : WIZARD_STEPS.filter((step) => step.id !== "review");
+export function visibleWizardSteps(hasMultiplePeriods: boolean) {
+  let steps = WIZARD_STEPS;
   if (!hasMultiplePeriods) {
     steps = steps.filter((step) => step.id !== "exclude-periods");
   }

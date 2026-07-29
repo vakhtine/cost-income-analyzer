@@ -5,19 +5,19 @@ import { visibleWizardSteps, WizardStep } from "@/lib/wizard";
 type Props = {
   currentStep: WizardStep;
   uploadComplete: boolean;
-  hasUnknownTransactions: boolean;
   hasMultiplePeriods: boolean;
+  unknownTransactionCount?: number;
   onStepClick: (step: WizardStep) => void;
 };
 
 export function WizardProgress({
   currentStep,
   uploadComplete,
-  hasUnknownTransactions,
   hasMultiplePeriods,
+  unknownTransactionCount = 0,
   onStepClick,
 }: Props) {
-  const steps = visibleWizardSteps(hasUnknownTransactions, hasMultiplePeriods);
+  const steps = visibleWizardSteps(hasMultiplePeriods);
   const currentIndex = steps.findIndex((step) => step.id === currentStep);
 
   return (
@@ -38,7 +38,12 @@ export function WizardProgress({
           >
             <span className="wizard-step-number">{isComplete && !isActive ? "✓" : index + 1}</span>
             <span className="wizard-step-copy">
-              <span className="wizard-step-label">{step.label}</span>
+              <span className="wizard-step-label">
+                {step.label}
+                {step.id === "review" && unknownTransactionCount > 0
+                  ? ` (${unknownTransactionCount})`
+                  : ""}
+              </span>
               <span className="wizard-step-desc">{step.description}</span>
             </span>
           </button>

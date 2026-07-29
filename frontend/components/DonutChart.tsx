@@ -21,8 +21,8 @@ export function DonutChart({
 
   const total = data.reduce((sum, item) => sum + item.value, 0) || 1;
   const size = compact ? 200 : layout === "stacked" ? 280 : 180;
-  const radius = compact ? 78 : layout === "stacked" ? 108 : 64;
-  const stroke = compact ? 30 : layout === "stacked" ? 38 : 24;
+  const radius = compact ? 88 : layout === "stacked" ? 108 : 64;
+  const stroke = compact ? 34 : layout === "stacked" ? 38 : 24;
   const center = size / 2;
   let offset = 0;
 

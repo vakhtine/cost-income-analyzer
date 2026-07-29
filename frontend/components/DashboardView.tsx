@@ -6,6 +6,7 @@ import { DonutChart } from "@/components/DonutChart";
 import { PeriodSelect } from "@/components/PeriodSelect";
 import { IncomeEntryPrompt } from "@/components/IncomeEntryPrompt";
 import { formatCategoryDisplayName } from "@/lib/category-icons";
+import { canonicalExpenseCategory } from "@/lib/category-normalize";
 import { topMerchantsByCategoryMap } from "@/lib/category-merchants";
 import { UI_LABELS } from "@/lib/ui-labels";
 import { useCurrency } from "@/lib/currency-context";
@@ -152,7 +153,8 @@ export function DashboardView({
 
   const expenseDonutData = expenseData.slice(0, 5).map((item) => ({
     ...item,
-    merchants: merchantsMap.get(item.name),
+    name: canonicalExpenseCategory(item.name),
+    merchants: merchantsMap.get(canonicalExpenseCategory(item.name)),
   }));
 
   return (

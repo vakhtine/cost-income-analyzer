@@ -4,6 +4,7 @@ import {
   resolveTransactionType,
   TRANSFER_CATEGORY_LABEL,
 } from "@/lib/constants";
+import { canonicalExpenseCategory } from "@/lib/category-normalize";
 import { classifyTransactions } from "@/lib/parser";
 import {
   reassignGlobalTransactionIds,
@@ -29,19 +30,21 @@ export function getKnownExpenseCategories(rows: Transaction[]) {
   const categories = new Set<string>();
   for (const row of filterExpenseTransactions(rows)) {
     if (row.transaction_type === "expense" && !isUnknownCategory(row.category)) {
-      categories.add(row.category);
+      categories.add(canonicalExpenseCategory(row.category));
     }
   }
   return [...categories].sort();
 }
 
 export function getAllUsedCategories(rows: Transaction[]) {
-  const categories = new Set<string>(DEFAULT_EXPENSE_CATEGORIES);
+  const categories = new Set<string>(
+    DEFAULT_EXPENSE_CATEGORIES.map((category) => canonicalExpenseCategory(category))
+  );
   categories.add(TRANSFER_CATEGORY_LABEL);
   for (const row of rows) {
     const category = row.category.trim();
     if (category && !isUnknownCategory(category)) {
-      categories.add(category);
+      categories.add(canonicalExpenseCategory(category));
     }
   }
   return [...categories].sort((a, b) => a.localeCompare(b));
@@ -85,7 +88,7 @@ export function applyUnknownAssignments(
       isUnknownCategory(row.category) &&
       assignments[row.merchant_name]
     ) {
-      const category = assignments[row.merchant_name];
+      const category = canonicalExpenseCategory(assignments[row.merchant_name]);
       const transaction_type = resolveTransactionType(category);
       return {
         ...row,

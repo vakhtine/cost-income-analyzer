@@ -1738,8 +1738,16 @@ textarea {
   color: #9a6700;
 }
 
-.period-exclusion-summary {
-  padding: 12px 16px;
+.mortgage-entry-prompt.embedded {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.mortgage-entry-prompt.embedded h4 {
+  font-size: 0.88rem;
+  margin: 0 0 8px;
 }
 
 .link-button {
@@ -3322,6 +3330,8 @@ td.metric-tone-negative,
 .dashboard-charts-compact {
   gap: 14px;
   margin-top: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  align-items: start;
 }
 
 .chart-card-compact {
@@ -3370,26 +3380,44 @@ td.metric-tone-negative,
 
 .donut-chart-ui-compact.donut-chart-ui-stacked {
   min-height: 0;
-  gap: 10px;
+  gap: 8px;
+  height: 100%;
 }
 
 .donut-chart-ui-compact .donut-chart-ui-ring {
+  width: 100%;
+  aspect-ratio: 1;
   min-height: 0;
-  max-height: 160px;
+  max-height: none;
+  flex: 1 1 auto;
 }
 
 .donut-chart-ui-compact .donut-chart-ui-ring svg {
   width: 100%;
   height: 100%;
+  display: block;
+}
+
+.donut-chart-ui-compact .donut-chart-ui-legend {
+  flex: 0 0 auto;
 }
 
 .donut-chart-ui-compact .donut-chart-ui-legend-row {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
 }
 
 .expense-donut-card.chart-card-compact {
   min-height: 0;
-  max-width: 340px;
+  max-width: none;
+  padding: 12px 14px;
+}
+
+.expense-donut-card.chart-card-compact h3 {
+  margin-bottom: 8px;
+}
+
+.expense-donut-card .donut-chart-ui-compact.donut-chart-ui-stacked {
+  min-height: 260px;
 }
 
 @media (max-width: 900px) {

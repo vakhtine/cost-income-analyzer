@@ -1,3 +1,5 @@
+import { canonicalExpenseCategory } from "@/lib/category-normalize";
+
 export type CategoryIconId =
   | "grocery"
   | "gas-fuel"
@@ -32,9 +34,7 @@ function normalizeCategory(category: string) {
 export function formatCategoryDisplayName(category: string): string {
   const key = normalizeCategory(category);
   if (key.includes("telecommunication")) return "Telecom";
-  if (key === "grocery" || key === "groceries" || key.startsWith("grocer")) return "Groceries";
-  if (key.includes("mortgage")) return "Mortgage payment";
-  return category;
+  return canonicalExpenseCategory(category);
 }
 
 export function getCategoryMeta(category: string): CategoryMeta {

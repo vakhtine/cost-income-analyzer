@@ -1,3 +1,4 @@
+import { canonicalExpenseCategory } from "@/lib/category-normalize";
 import {
   filterExpenseTransactions,
   filterIncomeTransactions,
@@ -9,10 +10,11 @@ import { round2 } from "@/lib/utils";
 function groupExpenseCategories(rows: Transaction[]) {
   const map = new Map<string, { total: number; count: number }>();
   for (const row of filterExpenseTransactions(rows)) {
-    const current = map.get(row.category) ?? { total: 0, count: 0 };
+    const category = canonicalExpenseCategory(row.category);
+    const current = map.get(category) ?? { total: 0, count: 0 };
     current.total += row.abs_amount;
     current.count += 1;
-    map.set(row.category, current);
+    map.set(category, current);
   }
   return [...map.entries()]
     .map(([category, value]) => ({ category, ...value }))
@@ -70,10 +72,11 @@ export function analyzeTransactions(rows: Transaction[]): PeriodAnalysis {
 
   const merchantMap = new Map<string, MerchantSummary>();
   for (const row of expenseRows) {
-    const key = `${row.merchant_name}::${row.category}`;
+    const category = canonicalExpenseCategory(row.category);
+    const key = `${row.merchant_name}::${category}`;
     const current = merchantMap.get(key) ?? {
       merchant_name: row.merchant_name,
-      category: row.category,
+      category,
       total: 0,
     };
     current.total += row.abs_amount;
@@ -127,9 +130,13 @@ export function analyzeTransactions(rows: Transaction[]): PeriodAnalysis {
 }
 
 export function expenseCategoryTotal(rows: Transaction[], category: string) {
+  const canonical = canonicalExpenseCategory(category);
   return round2(
     rows
-      .filter((row) => isExpenseTransaction(row) && row.category === category)
+      .filter(
+        (row) =>
+          isExpenseTransaction(row) && canonicalExpenseCategory(row.category) === canonical
+      )
       .reduce((sum, row) => sum + row.abs_amount, 0)
   );
 }

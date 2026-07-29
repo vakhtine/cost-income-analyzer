@@ -1,3 +1,4 @@
+import { canonicalExpenseCategory } from "@/lib/category-normalize";
 import { filterExpenseTransactions, isExpenseTransaction, sumExpenseAmount } from "@/lib/transaction-filters";
 import { CategorySummary, Transaction } from "@/lib/types";
 import { mean, round2, stdDev } from "@/lib/utils";
@@ -10,6 +11,7 @@ export const RECURRING_EXPENSE_CATEGORIES = new Set([
   "utilities",
   "subscriptions",
   "mortgage",
+  "mortgage payment",
   "loan payment",
   "phone",
   "internet",
@@ -87,8 +89,9 @@ export function computeCategoryVolatility(
   for (const period of periodOrder) {
     for (const row of periodRows[period] ?? []) {
       if (!isExpenseTransaction(row)) continue;
-      if (!categoryMap.has(row.category)) categoryMap.set(row.category, new Map());
-      const periodMap = categoryMap.get(row.category)!;
+      const category = canonicalExpenseCategory(row.category);
+      if (!categoryMap.has(category)) categoryMap.set(category, new Map());
+      const periodMap = categoryMap.get(category)!;
       periodMap.set(period, (periodMap.get(period) ?? 0) + row.abs_amount);
     }
   }
@@ -141,7 +144,7 @@ function categoryHistoricalStats(
     if (period === excludePeriod) continue;
     for (const row of periodRows[period] ?? []) {
       if (!isExpenseTransaction(row)) continue;
-      const key = row.category;
+      const key = canonicalExpenseCategory(row.category);
       const current = stats.get(key) ?? { amounts: [], count: 0 };
       current.amounts.push(row.abs_amount);
       current.count += 1;
@@ -175,10 +178,11 @@ export function detectAnomalies(
   >();
 
   for (const row of rows) {
-    const key = `${row.merchant_name}::${row.category}`;
+    const category = canonicalExpenseCategory(row.category);
+    const key = `${row.merchant_name}::${category}`;
     const current = merchantGroups.get(key) ?? {
       merchant_name: row.merchant_name,
-      category: row.category,
+      category,
       total: 0,
       count: 0,
       max: 0,
@@ -198,7 +202,11 @@ export function detectAnomalies(
         .filter((period) => period !== targetPeriod)
         .map((period) =>
           (periodRows[period] ?? [])
-            .filter((row) => isExpenseTransaction(row) && row.category === group.category)
+            .filter(
+              (row) =>
+                isExpenseTransaction(row) &&
+                canonicalExpenseCategory(row.category) === group.category
+            )
             .reduce((sum, row) => sum + row.abs_amount, 0)
         )
         .filter((total) => total > 0);
@@ -267,11 +275,13 @@ export function computeCategoryTrends(
 
   for (const row of currentRows) {
     if (!isExpenseTransaction(row)) continue;
-    currentTotals.set(row.category, (currentTotals.get(row.category) ?? 0) + row.abs_amount);
+    const category = canonicalExpenseCategory(row.category);
+    currentTotals.set(category, (currentTotals.get(category) ?? 0) + row.abs_amount);
   }
   for (const row of priorRows) {
     if (!isExpenseTransaction(row)) continue;
-    priorTotals.set(row.category, (priorTotals.get(row.category) ?? 0) + row.abs_amount);
+    const category = canonicalExpenseCategory(row.category);
+    priorTotals.set(category, (priorTotals.get(category) ?? 0) + row.abs_amount);
   }
 
   const categories = new Set([...currentTotals.keys(), ...priorTotals.keys()]);

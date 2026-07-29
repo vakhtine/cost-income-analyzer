@@ -32,6 +32,7 @@ import {
 import { resolvePeriodForDate } from "@/lib/period-utils";
 
 import { resolveTransactionType, TRANSFER_CATEGORY_LABEL } from "@/lib/constants";
+import { UI_LABELS } from "@/lib/ui-labels";
 
 import { rebuildAnalyzeResponse } from "@/lib/rebuild";
 
@@ -574,7 +575,10 @@ export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEdito
           on the card or account you paid.
         </p>
 
-        <p>Assign unknown merchants to a category already used in your file, or choose Transfer.</p>
+        <p>
+          Assign unknown merchants to an expenses category, type a new one if needed, or choose
+          Transfer.
+        </p>
 
         {unknownMerchants.length === 0 ? (
 
@@ -585,47 +589,27 @@ export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEdito
           <>
 
             {unknownMerchants.map((merchant) => (
-
               <div key={merchant.merchant_name} className="form-row">
-
                 <span>
-
                   <strong>{merchant.merchant_name}</strong> — {formatCurrency(merchant.total)}
-
                 </span>
-
-                <select
-
+                <input
+                  list={`unknown-category-options-${merchant.merchant_name}`}
                   value={unknownAssignments[merchant.merchant_name] ?? knownCategories[0] ?? ""}
-
                   onChange={(event) =>
-
                     setUnknownAssignments((current) => ({
-
                       ...current,
-
                       [merchant.merchant_name]: event.target.value,
-
                     }))
-
                   }
-
-                >
-
+                  placeholder="Expenses category"
+                />
+                <datalist id={`unknown-category-options-${merchant.merchant_name}`}>
                   {merchantCategoryOptions.map((category) => (
-
-                    <option key={category} value={category}>
-
-                      {category}
-
-                    </option>
-
+                    <option key={category} value={category} />
                   ))}
-
-                </select>
-
+                </datalist>
               </div>
-
             ))}
 
             <button className="tab active" onClick={applyUnknown}>
@@ -661,7 +645,7 @@ export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEdito
 
           Rows load automatically for the selected period. Add income (Salary, Pension),
 
-          expenses (Rent, Groceries), or transfers, then save changes. If a row has a date,
+          expenses (Rent, Mortgage payment, Groceries, Restaurants), or transfers, then save changes. If a row has a date,
 
           it is assigned to that month&apos;s period automatically (for example, rent dated
 
@@ -715,7 +699,7 @@ export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEdito
 
                     <th>Merchant</th>
 
-                    <th>Category</th>
+                    <th>{UI_LABELS.incomeExpenseCategory}</th>
 
                     <th>Amount</th>
 

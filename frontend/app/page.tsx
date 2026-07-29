@@ -7,6 +7,7 @@ import { CustomReportExport } from "@/components/CustomReportExport";
 import { DashboardView } from "@/components/DashboardView";
 import { HeroSection } from "@/components/HeroSection";
 import { IncomeEntryPrompt } from "@/components/IncomeEntryPrompt";
+import { MortgageEntryPrompt } from "@/components/MortgageEntryPrompt";
 import { MultiPeriodView } from "@/components/MultiPeriodView";
 import { PeriodSelect } from "@/components/PeriodSelect";
 import { RelocationExplorer } from "@/components/RelocationExplorer";
@@ -26,7 +27,7 @@ import {
 } from "@/lib/rebuild";
 import { resolvePeriodReportSelection } from "@/lib/rebuild";
 import { findRelocatePeriod } from "@/lib/relocate-period";
-import { countUnknownTransactions, hasUnknownTransactionsInData } from "@/lib/categorization";
+import { countUnknownTransactions } from "@/lib/categorization";
 import { useCurrency } from "@/lib/currency-context";
 import { AnalyzeResponse } from "@/lib/types";
 import { applyExcludedPeriods } from "@/lib/period-exclusion";
@@ -113,7 +114,6 @@ export default function HomePage() {
       : analysisData?.periods[analysisData.periods.length - 1] ?? "";
 
   const cleanIncomePeriodLabel = data?.periods[data.periods.length - 1] ?? "";
-  const hasUnknownTransactions = data ? hasUnknownTransactionsInData(data) : false;
   const hasMultiplePeriods = Boolean(data && data.periods.length > 1);
   const unknownTransactionCount = data
     ? countUnknownTransactions(Object.values(data.period_rows).flat())
@@ -156,12 +156,6 @@ export default function HomePage() {
 
   function goToStep(step: WizardStep) {
     if (!data && step !== "upload") return;
-    if (step === "review") {
-      if (!data || !hasUnknownTransactionsInData(data)) {
-        resolveAnalyzeEntry();
-        return;
-      }
-    }
     if (step === "relocate" && data) {
       const relocatePeriod =
         !isAllPeriods && !isAveragePeriod && selectedPeriod
@@ -194,8 +188,8 @@ export default function HomePage() {
           <WizardProgress
             currentStep={wizardStep}
             uploadComplete={Boolean(data)}
-            hasUnknownTransactions={hasUnknownTransactions}
             hasMultiplePeriods={hasMultiplePeriods}
+            unknownTransactionCount={unknownTransactionCount}
             onStepClick={goToStep}
           />
 
@@ -210,52 +204,42 @@ export default function HomePage() {
                 context="clean"
               />
               <ReviewTab data={data} onUpdate={updateData} showUnknownSection={false} />
-              {hasUnknownTransactions ? (
-                <section className="card clean-review-prompt">
-                  <h3>Categorize unknown or uncategorized expenses?</h3>
-                  <p>
-                    You have <strong>{unknownTransactionCount}</strong> expense
-                    {unknownTransactionCount === 1 ? "" : "s"} labeled Unknown or Uncategorized.
-                    Assigning them to rent, groceries, and other categories improves your health
-                    score, charts, and relocation reports.
-                  </p>
-                  <p className="clean-review-prompt-note">
-                    Would you like to review and categorize these transactions before continuing?
-                  </p>
-                  <div className="wizard-nav">
-                    <button className="tab" onClick={() => goToStep("upload")}>
-                      Back
-                    </button>
-                    <button className="tab" onClick={resolveAnalyzeEntry}>
-                      Skip for now
-                    </button>
-                    <button className="tab active" onClick={() => goToStep("review")}>
-                      Review &amp; categorize
-                    </button>
-                  </div>
-                </section>
-              ) : (
-                <div className="wizard-nav">
-                  <button className="tab" onClick={() => goToStep("upload")}>
-                    Back
-                  </button>
-                  <button className="tab active" onClick={resolveAnalyzeEntry}>
-                    Continue to Analyze
-                  </button>
-                </div>
-              )}
+              <div className="wizard-nav">
+                <button className="tab" onClick={() => goToStep("upload")}>
+                  Back
+                </button>
+                <button className="tab active" onClick={() => goToStep("review")}>
+                  Continue to Review
+                </button>
+              </div>
             </div>
           )}
 
           {wizardStep === "review" && (
             <div className="stack">
               <section className="card">
-                <h3>Review unknown transactions</h3>
+                <h3>Review before analysis</h3>
                 <p>
-                  Assign each unknown or uncategorized merchant to an expense category already used
-                  in your file, or mark it as a transfer between your own accounts.
+                  Categorize unknown or uncategorized merchants, add mortgage payments if missing,
+                  and fix any suggested category changes before your health score and reports are
+                  calculated.
                 </p>
+                {unknownTransactionCount > 0 ? (
+                  <p className="insight">
+                    <strong>{unknownTransactionCount}</strong> expense
+                    {unknownTransactionCount === 1 ? "" : "s"} still labeled Unknown or
+                    Uncategorized.
+                  </p>
+                ) : (
+                  <p className="insight">No unknown merchants found — you can still add mortgage payments or continue.</p>
+                )}
               </section>
+              <MortgageEntryPrompt
+                data={data}
+                periodLabel={cleanIncomePeriodLabel}
+                periods={data.periods}
+                onUpdate={updateData}
+              />
               <ReviewTab
                 data={data}
                 onUpdate={updateData}
@@ -278,7 +262,7 @@ export default function HomePage() {
               periods={data.periods}
               excludedPeriods={excludedPeriods}
               onExcludedChange={setExcludedPeriods}
-              onBack={() => goToStep(hasUnknownTransactions ? "review" : "clean")}
+              onBack={() => goToStep("review")}
               onContinue={() => goToStep("analyze")}
             />
           )}
@@ -359,7 +343,7 @@ export default function HomePage() {
               />
               <PeriodChangePanel data={analysisData} />              {analysisData.periods.length > 1 && <MultiPeriodView data={analysisData} />}
               <div className="wizard-nav">
-                <button className="tab" onClick={() => goToStep(hasUnknownTransactions ? "review" : "clean")}>
+                <button className="tab" onClick={() => goToStep("review")}>
                   Back
                 </button>
                 <button className="tab active" onClick={() => goToStep("relocate")}>

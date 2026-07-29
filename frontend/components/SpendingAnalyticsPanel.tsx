@@ -1,5 +1,6 @@
 "use client";
 
+import { canonicalExpenseCategory } from "@/lib/category-normalize";
 import { CategoryLabel } from "@/components/CategoryIcon";
 import { PeriodSelect } from "@/components/PeriodSelect";
 import { topMerchantsByCategoryMap } from "@/lib/category-merchants";
@@ -171,14 +172,16 @@ export function SpendingAnalyticsPanel({ data, selectedPeriod, onPeriodChange }:
           </thead>
           <tbody>
             {periodAnalysis.expense_categories.map((item) => {
-              const categoryVolatility = volatilityByCategory.get(item.category);
+              const categoryVolatility = volatilityByCategory.get(
+                canonicalExpenseCategory(item.category)
+              );
               return (
                 <tr key={item.category}>
                   <td>
                     <CategoryLabel
                       category={item.category}
                       iconSize={42}
-                      topMerchants={merchantsMap.get(item.category)}
+                      topMerchants={merchantsMap.get(canonicalExpenseCategory(item.category))}
                     />
                   </td>
                   <td>
@@ -279,7 +282,7 @@ export function SpendingAnalyticsPanel({ data, selectedPeriod, onPeriodChange }:
                         <CategoryLabel
                           category={item.category}
                           iconSize={42}
-                          topMerchants={merchantsMap.get(item.category)}
+                          topMerchants={merchantsMap.get(canonicalExpenseCategory(item.category))}
                         />
                       </td>
                       <td>{formatExpense(item.current_total)}</td>
@@ -319,7 +322,7 @@ export function SpendingAnalyticsPanel({ data, selectedPeriod, onPeriodChange }:
                       <CategoryLabel
                         category={item.category}
                         iconSize={42}
-                        topMerchants={merchantsMap.get(item.category)}
+                        topMerchants={merchantsMap.get(canonicalExpenseCategory(item.category))}
                       />
                     </td>
                     <td>{item.volatility_pct.toFixed(1)}%</td>
@@ -360,7 +363,7 @@ export function SpendingAnalyticsPanel({ data, selectedPeriod, onPeriodChange }:
                       <CategoryLabel
                         category={item.category}
                         iconSize={42}
-                        topMerchants={merchantsMap.get(item.category)}
+                        topMerchants={merchantsMap.get(canonicalExpenseCategory(item.category))}
                       />
                     </td>
                     <td>{formatExpense(item.amount)}</td>
