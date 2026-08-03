@@ -107,7 +107,8 @@ export function UploadZone({ onUpload, loading, onError }: Props) {
           type="file"
           accept={SUPPORTED_UPLOAD_ACCEPT}
           multiple
-          hidden
+          className="upload-file-input"
+          aria-label="Choose statement files to upload"
           onChange={(event) => {
             handleFiles(event.target.files);
             event.target.value = "";

@@ -295,6 +295,35 @@ export function sumCategoryItems(
   return round2(keys.reduce((sum, key) => sum + (map[key] ?? 0), 0));
 }
 
+/** Scale sample basket prices to estimated monthly spend for side-by-side city tables. */
+const ITEM_MONTHLY_MULTIPLIERS: Partial<Record<CityCostItemKey, number>> = {
+  inexpensive_meal: 6,
+  fast_food_combo: 4,
+  coffee: 12,
+  beer: 4,
+  milk: 32,
+  bread: 24,
+  eggs: 8,
+  apples: 16,
+  local_transport_one_way: 44,
+  mobile_plan: 1,
+  basic_utilities: 1,
+  gym_membership: 1,
+};
+
+export function sumCategoryItemsMonthly(
+  profile: CityCostProfile,
+  keys: readonly CityCostItemKey[]
+) {
+  const map = Object.fromEntries(profile.items.map((item) => [item.key, item.priceUsd]));
+  return round2(
+    keys.reduce(
+      (sum, key) => sum + (map[key] ?? 0) * (ITEM_MONTHLY_MULTIPLIERS[key] ?? 1),
+      0
+    )
+  );
+}
+
 export async function fetchCityCostProfile(cityLabel: string): Promise<CityCostProfile> {
   const staticItems = STATIC_CITY_COST_ITEMS[cityLabel];
   if (staticItems) {

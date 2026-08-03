@@ -1,6 +1,7 @@
 "use client";
 
 import { formatCategoryDisplayName } from "@/lib/category-icons";
+import { formatMerchantList } from "@/lib/merchant-format";
 
 const COLORS = ["#1a6b7c", "#2d9cdb", "#7eb8c9", "#c9a227", "#2d6a4f", "#8b5cf6"];
 
@@ -21,15 +22,22 @@ export function DonutChart({
 
   const total = data.reduce((sum, item) => sum + item.value, 0) || 1;
   const size = compact ? 200 : layout === "stacked" ? 280 : 180;
-  const radius = compact ? 88 : layout === "stacked" ? 108 : 64;
-  const stroke = compact ? 34 : layout === "stacked" ? 38 : 24;
+  const radius = compact ? 68 : layout === "stacked" ? 108 : 64;
+  const stroke = compact ? 26 : layout === "stacked" ? 38 : 24;
   const center = size / 2;
+  const pad = stroke / 2 + 6;
   let offset = 0;
 
   return (
-    <div className={`donut-chart-ui ${layout === "stacked" ? "donut-chart-ui-stacked" : ""}${compact ? " donut-chart-ui-compact" : ""}`}>
+    <div className={`donut-chart-ui ${layout === "stacked" ? "donut-chart-ui-stacked" : "donut-chart-ui-side"}${compact ? " donut-chart-ui-compact" : ""}`}>
       <div className="donut-chart-ui-ring">
-        <svg width="100%" height="100%" viewBox={`0 0 ${size} ${size}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <svg
+          width="100%"
+          height="100%"
+          viewBox={`${-pad} ${-pad} ${size + pad * 2} ${size + pad * 2}`}
+          preserveAspectRatio="xMidYMid meet"
+          aria-hidden="true"
+        >
           <circle
             cx={center}
             cy={center}
@@ -77,11 +85,12 @@ export function DonutChart({
             <span className="donut-chart-ui-legend-label">
               <span>{formatCategoryDisplayName(item.name)}</span>
               {item.merchants && item.merchants.length > 0 ? (
-                <span className="category-top-merchants">{item.merchants.join(" · ")}</span>
+                <span className="category-top-merchants">{formatMerchantList(item.merchants)}</span>
               ) : null}
             </span>
-            <strong>
-              {formatValue(item.value)} · {((item.value / total) * 100).toFixed(1)}%
+            <strong className="donut-chart-ui-legend-stats">
+              <span className="donut-chart-ui-amount">{formatValue(item.value)}</span>
+              <span className="donut-chart-ui-pct">{((item.value / total) * 100).toFixed(1)}%</span>
             </strong>
           </div>
         ))}

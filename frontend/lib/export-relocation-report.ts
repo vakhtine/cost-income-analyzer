@@ -1,15 +1,22 @@
 import { BENCHMARK_CATEGORIES } from "@/lib/benchmark-categories";
-import { getCategoryPdfSymbol } from "@/lib/category-icons";
+import { MONTHLY_BENCHMARK_NOTE } from "@/lib/city-data";
 import { CITY_PROFILE_STAT_ROWS, getCityProfile } from "@/lib/city-profiles";
+import {
+  CompositeScoreEntry,
+  PurchasingPowerIndexEntry,
+  RELOCATION_COMPOSITE_FOOTNOTE,
+  topPurchasingPowerExample,
+} from "@/lib/relocation-composite";
 import { CityAffordabilitySummary } from "@/lib/relocation-scenario";
 import { RelocationReadiness, RelocationTimeline } from "@/lib/relocation-profile";
 import { RelocationAffordability } from "@/lib/relocation-affordability";
-import { AnalyzeResponse, LocationCompareResult, LocationComparison } from "@/lib/types";
+import { AnalyzeResponse, LocationCompareResult } from "@/lib/types";
 import {
   buildFactorScorecardHtml,
   buildKpiStripHtml,
   buildReportIntroBlock,
   buildRoundedBarChartHtml,
+  computeRelocationOverviewScores,
   scoreBandLabel,
   scoreBandTone,
 } from "@/lib/report-charts";
@@ -20,7 +27,6 @@ import {
   escapeHtml,
 } from "@/lib/report-export";
 import { getReportPrivacyNotice } from "@/lib/report-dates";
-import { applyRecommendationRankScores } from "@/lib/city-recommender";
 
 export type ReportRecommendation = {
   city: string;
@@ -54,9 +60,17 @@ export type ReportPayload = {
   formatDisplay: (amount: number) => string;
   formatExpense: (amount: number) => string;
   formatReferenceCost: (amount: number) => string;
+  referenceCostNote?: string;
+  dataSource?: string;
+  dataSourceUpdated?: string;
+  dataLicense?: string;
+  homeMonthlyCostDisplay?: number | null;
+  purchasingPowerEntries?: import("@/lib/relocation-composite").PurchasingPowerIndexEntry[];
+  compositeEntries?: import("@/lib/relocation-composite").CompositeScoreEntry[];
+  financialHealthScore?: number;
 };
 
-const TOTAL_PAGES = 3;
+const TOTAL_PAGES = 4;
 const REPORT_LABEL = "Relocation affordability";
 
 function formatPct(value: number, signed = true) {
@@ -87,7 +101,6 @@ function pageShell(
 ) {
   const intro = showIntro
     ? buildReportIntroBlock(
-        payload.generatedAt,
         payload.periodLabel,
         payload.displayCurrency,
         privacyNotice,
@@ -104,18 +117,122 @@ function pageShell(
     privacyNotice,
     showPrivacy: false,
     meta: {
-      generatedAt: payload.generatedAt,
       periodLabel: payload.periodLabel,
       displayCurrency: payload.displayCurrency,
     },
   });
 }
 
-function cityContextBlock(baseCity: string, bestFitCity: string) {
+function buildPurchasingPowerIndexReport(
+  homeCity: string,
+  entries: PurchasingPowerIndexEntry[]
+) {
+  if (entries.length < 2) return "";
+
+  const maxIndex = Math.max(...entries.map((entry) => entry.index), 100);
+  const colors = ["#4a5568", "#1a6b7c", "#b85c38", "#c9a227", "#2d6a4f"];
+  const rows = entries
+    .map((entry, index) => {
+      const widthPct = Math.max(8, (entry.index / maxIndex) * 100);
+      return `
+      <div class="pp-index-row">
+        <div class="pp-index-label">${entry.isHome ? "Home" : escapeHtml(entry.cityShort)}</div>
+        <div class="pp-index-bar-track">
+          <div class="pp-index-bar" style="width:${widthPct}%;background:${colors[index % colors.length]}"></div>
+          ${entry.isHome ? `<span class="pp-index-baseline">home = 100</span>` : ""}
+        </div>
+        <div class="pp-index-value">${Math.round(entry.index)}</div>
+      </div>`;
+    })
+    .join("");
+
+  const example = topPurchasingPowerExample(entries, homeCity);
+
   return `
-    <div class="meta-grid city-context-grid">
-      <div><span>Your current city</span><strong>${escapeHtml(baseCity)}</strong></div>
-      <div><span>Best-fit city</span><strong>${escapeHtml(bestFitCity)}</strong></div>
+    <div class="report-section-bordered report-section-compact pp-index-section">
+      <p class="report-kicker">Purchasing power index</p>
+      <h2 class="section-title">Same income, indexed against home cost of living (home = 100)</h2>
+      <div class="pp-index-chart pp-index-chart-compact">${rows}</div>
+      ${example ? `<p class="report-explanatory-callout report-callout-compact">${escapeHtml(example)}</p>` : ""}
+    </div>`;
+}
+
+function dedupeCompositeEntries(entries: CompositeScoreEntry[]) {
+  let homeSeen = false;
+  return entries.filter((entry) => {
+    if (entry.isHome) {
+      if (homeSeen) return false;
+      homeSeen = true;
+      return true;
+    }
+    return !entries.some((home) => home.isHome && home.city === entry.city);
+  });
+}
+
+function buildCompositeScoresReport(entries: CompositeScoreEntry[]) {
+  const displayEntries = dedupeCompositeEntries(entries);
+  const destinations = displayEntries.filter((entry) => !entry.isHome);
+  if (!destinations.length) return "";
+
+  const gaugeColors = ["#4a5568", "#1a6b7c", "#b85c38", "#c9a227", "#2d6a4f"];
+  const gauges = displayEntries
+    .map((entry, index) => {
+      const score = Math.max(0, Math.min(100, entry.financialHealthScore));
+      const radius = 28;
+      const circumference = 2 * Math.PI * radius;
+      const offset = circumference - (score / 100) * circumference;
+      const label = entry.isHome
+        ? `Home — ${escapeHtml(entry.cityShort)}`
+        : escapeHtml(entry.cityShort);
+      return `
+      <div class="composite-gauge-report composite-gauge-report-compact">
+        <svg width="72" height="72" viewBox="0 0 88 88" aria-hidden="true">
+          <circle cx="44" cy="44" r="${radius}" fill="none" stroke="#eef4f6" stroke-width="8"></circle>
+          <circle cx="44" cy="44" r="${radius}" fill="none" stroke="${gaugeColors[index % gaugeColors.length]}" stroke-width="8" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" transform="rotate(-90 44 44)"></circle>
+          <text x="44" y="47" text-anchor="middle" class="composite-gauge-value">${Math.round(score)}</text>
+        </svg>
+        <span>${label}</span>
+        <span class="composite-gauge-type">Financial health score</span>
+      </div>`;
+    })
+    .join("");
+
+  const cards = destinations
+    .map((entry) => {
+      const costLabel =
+        entry.costVsHomePct > 0
+          ? `−${entry.costVsHomePct.toFixed(0)}% cost vs. home`
+          : entry.costVsHomePct < 0
+            ? `+${Math.abs(entry.costVsHomePct).toFixed(0)}% cost vs. home`
+            : "0% cost vs. home";
+      return `
+      <div class="composite-city-card-report${entry.isBestFit ? " best-fit" : ""}">
+        <div class="composite-city-card-head">
+          <strong>${escapeHtml(entry.city)}</strong>
+          ${entry.isBestFit ? `<span class="composite-best-fit">Best fit</span>` : ""}
+        </div>
+        <div class="composite-city-score">${entry.relocationLikelihoodScore}</div>
+        <p class="composite-score-type">Relocation fit score</p>
+        <p>${costLabel} · ${Math.round(entry.purchasingPowerIndex)} purchasing power${
+          entry.savingsRunwayMonths !== null
+            ? ` · ${entry.savingsRunwayMonths.toFixed(1)} mo savings runway`
+            : ""
+        }</p>
+      </div>`;
+    })
+    .join("");
+
+  const bestReason = destinations.find((entry) => entry.rankReason)?.rankReason;
+
+  return `
+    <div class="report-section-bordered report-section-compact composite-scores-report">
+      <p class="report-kicker">Financial health &amp; relocation fit</p>
+      <h2 class="section-title">Composite scores — illustrative weighting, not a guarantee</h2>
+      <p class="report-explanatory-callout report-callout-compact"><strong>Financial health score</strong> (gauges) uses the same four-factor model as Analyze with what-if income applied. <strong>Relocation fit score</strong> (cards) ranks destinations: cost savings 40%, purchasing power 35%, savings runway 25%.</p>
+      <div class="composite-gauge-grid-report composite-gauge-grid-compact">${gauges}</div>
+      <div class="composite-card-grid-report composite-card-grid-compact">${cards}</div>
+      ${bestReason ? `<p class="report-explanatory-callout report-callout-compact">${escapeHtml(bestReason)}</p>` : ""}
+      <p class="report-explanatory-callout report-callout-compact composite-footnote">${escapeHtml(RELOCATION_COMPOSITE_FOOTNOTE)}</p>
     </div>`;
 }
 
@@ -132,6 +249,7 @@ function adjustmentChart(
   const balanceW = Math.round((Math.abs(balance) / max) * 100);
 
   return `
+    <div class="report-section-bordered">
     <h2 class="section-title">Affordability adjustment</h2>
     <div class="adjustment-chart">
       <div class="adj-row">
@@ -160,6 +278,7 @@ function adjustmentChart(
       <span><i class="swatch income"></i> Scenario income</span>
       <span><i class="swatch cost"></i> Destination cost</span>
       <span><i class="swatch ${balance >= 0 ? "balance-pos" : "balance-neg"}"></i> Projected balance</span>
+    </div>
     </div>`;
 }
 
@@ -167,16 +286,8 @@ function buildPageOne(payload: ReportPayload) {
   const dest = payload.bestFitCity;
   const aff = payload.affordability;
   const destLabel = dest.split(",")[0]?.trim() ?? dest;
-  const rankedTop = applyRecommendationRankScores(
-    payload.topRecommendations.map((entry) => ({
-      city: entry.city,
-      score: entry.score,
-      projectedBalance: entry.projectedBalance,
-      referenceMonthlyCost: entry.referenceMonthlyCost,
-      verdictLabel: entry.verdictLabel,
-    }))
-  );
-  const displayScore = rankedTop[0]?.score ?? aff?.score ?? 0;
+  const factorScores = aff ? computeRelocationOverviewScores(aff) : null;
+  const displayScore = aff?.score ?? factorScores?.heroScore ?? 0;
   const tone = scoreBandTone(displayScore);
 
   const body = `
@@ -189,9 +300,9 @@ function buildPageOne(payload: ReportPayload) {
           ${aff ? `<p class="score-hero-summary">${escapeHtml(aff.summary)}</p>` : ""}
         </div>
         <div class="score-hero-factors">
-          ${aff ? buildFactorScorecardHtml("Savings rate fit", Math.min(100, Math.max(0, Math.round((aff.projectedBalance / Math.max(aff.scenarioIncomeDisplay, 1)) * 100 + 50))), undefined) : ""}
-          ${aff ? buildFactorScorecardHtml("Income vs cost", Math.min(100, Math.max(0, Math.round((aff.scenarioIncomeDisplay / Math.max(aff.displayReferenceCost, 1)) * 50))), undefined) : ""}
-          ${aff ? buildFactorScorecardHtml("Balance outlook", aff.projectedBalance >= 0 ? 85 : 35, undefined) : ""}
+          ${factorScores ? buildFactorScorecardHtml("Savings rate fit", factorScores.savingsRateFit, undefined) : ""}
+          ${factorScores ? buildFactorScorecardHtml("Income vs cost", factorScores.incomeVsCost, undefined) : ""}
+          ${factorScores ? buildFactorScorecardHtml("Balance outlook", factorScores.balanceOutlook, undefined) : ""}
         </div>
       </div>
       ${buildKpiStripHtml([
@@ -217,7 +328,6 @@ function buildPageOne(payload: ReportPayload) {
           )
         : ""
     }
-    ${topRecommendationsTable(rankedTop, payload.formatDisplay)}
   `;
 
   return pageShell(
@@ -230,163 +340,53 @@ function buildPageOne(payload: ReportPayload) {
   );
 }
 
-function categoryIndexTable(
-  comparisons: LocationComparison[],
-  destinationCity: string,
-  formatExpense: (amount: number) => string,
-  formatReferenceCost: (amount: number) => string
-) {
-  if (!comparisons.length) {
-    return `<p class="muted-note">Run a city comparison in the app to populate category data.</p>`;
-  }
+function buildPageTwo(payload: ReportPayload) {
+  const body =
+    payload.compositeEntries?.length
+      ? buildCompositeScoresReport(payload.compositeEntries)
+      : `<p class="muted-note">Run a city comparison in the app to populate composite scores.</p>`;
 
-  const totalUser = comparisons.reduce((sum, row) => sum + row.user_amount, 0);
-  const totalRef = comparisons.reduce((sum, row) => sum + row.reference_amount, 0);
-  const totalDiff = totalRef ? ((totalUser - totalRef) / totalRef) * 100 : 0;
-  const destLabel = destinationCity.split(",")[0]?.trim() ?? destinationCity;
-
-  const narrative =
-    totalDiff > 0
-      ? `Your spending is ${formatPct(totalDiff)} above reference averages in ${escapeHtml(destinationCity)} across tracked categories.`
-      : totalDiff < 0
-        ? `Your spending is ${formatPct(Math.abs(totalDiff), false)} below reference averages in ${escapeHtml(destinationCity)} across tracked categories.`
-        : `Your spending is near reference averages in ${escapeHtml(destinationCity)}.`;
-
-  const sorted = [...comparisons].sort(
-    (a, b) => Math.abs(b.difference_pct) - Math.abs(a.difference_pct)
+  return pageShell(
+    2,
+    "Financial health & relocation fit",
+    body,
+    getReportPrivacyNotice(payload.data.privacy_notice),
+    payload
   );
-  const topComparisons = sorted.slice(0, 5);
+}
 
-  const rows = topComparisons
-    .map(
-      (row, index) => `
-      <tr class="${index % 2 === 0 ? "stripe" : ""}">
-        <td>${escapeHtml(row.category)}</td>
-        <td>${formatExpense(row.user_amount)}</td>
-        <td>${formatReferenceCost(row.reference_amount)}</td>
-        <td class="${row.difference_pct > 0 ? "neg" : row.difference_pct < 0 ? "pos" : ""}">${formatPct(row.difference_pct)}</td>
-      </tr>`
-    )
-    .join("");
-
-  const chartBars = buildRoundedBarChartHtml(
-    topComparisons.map((row) => ({
-      label: row.category,
-      value: Math.abs(row.difference_pct),
-    })),
-    (value) => `${value.toFixed(1)}%`
-  );
-
-  return `
-    <div class="section-block">
-      <h2 class="section-title">Category comparison</h2>
-      <p class="muted-note">${narrative}</p>
-      <table class="index-table summary-table-compact">
-        <thead>
-          <tr>
-            <th>Category</th>
-            <th>Your spending</th>
-            <th>${escapeHtml(destLabel)} avg.</th>
-            <th>Difference</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows}
-          <tr class="total-row">
-            <td><strong>Total</strong></td>
-            <td><strong>${formatExpense(totalUser)}</strong></td>
-            <td><strong>${formatReferenceCost(totalRef)}</strong></td>
-            <td class="${totalDiff > 0 ? "neg" : totalDiff < 0 ? "pos" : ""}"><strong>${formatPct(totalDiff)}</strong></td>
-          </tr>
-        </tbody>
-      </table>
+function buildPageThree(payload: ReportPayload) {
+  const body = `
+    ${
+      payload.purchasingPowerEntries?.length
+        ? buildPurchasingPowerIndexReport(payload.baseCity, payload.purchasingPowerEntries)
+        : ""
+    }
+    <div class="hero-zone hero-zone-compact">
+      ${buildRelocationStory(payload)}
+      ${buildRelocationMetricsStrip(payload)}
     </div>
-    <div class="chart-panel section-block-loose">
-      <h2 class="section-title">Top 5 category gaps</h2>
-      ${chartBars}
-    </div>`;
-}
+  `;
 
-function topRecommendationsTable(
-  recommendations: ReportRecommendation[],
-  formatDisplay: (amount: number) => string
-) {
-  if (!recommendations.length) {
-    return `<p class="muted-note">Run <strong>Find best-fit cities</strong> in the app to populate recommended destinations.</p>`;
-  }
-
-  const rows = recommendations
-    .map(
-      (entry, index) => `
-    <tr class="${index % 2 === 0 ? "stripe" : ""}">
-      <td>#${index + 1} ${escapeHtml(entry.city)}</td>
-      <td>${formatDisplay(entry.referenceMonthlyCost)}</td>
-      <td class="${entry.projectedBalance >= 0 ? "pos" : "neg"}">${entry.projectedBalance >= 0 ? "+" : ""}${formatDisplay(entry.projectedBalance)}</td>
-      <td>${entry.score}/100</td>
-      <td>${escapeHtml(entry.verdictLabel)}</td>
-    </tr>`
-    )
-    .join("");
-
-  return `
-    <div class="section-block">
-      <h2 class="section-title">Top 3 recommended cities</h2>
-      <table class="index-table compact">
-      <thead>
-        <tr>
-          <th>City</th>
-          <th>Est. cost</th>
-          <th>Balance</th>
-          <th>Relocation affordability score</th>
-          <th>Verdict</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-function cityRankTable(
-  summaries: CityAffordabilitySummary[],
-  topRecommendations: ReportRecommendation[],
-  formatDisplay: (amount: number) => string
-) {
-  if (topRecommendations.length) {
-    return topRecommendationsTable(topRecommendations, formatDisplay);
-  }
-
-  if (!summaries.length) return "";
-
-  const sorted = [...summaries].sort(
-    (a, b) => b.affordability.projectedBalance - a.affordability.projectedBalance
+  return pageShell(
+    3,
+    "Spending vs best-fit city",
+    body,
+    getReportPrivacyNotice(payload.data.privacy_notice),
+    payload
   );
+}
 
-  const rows = sorted
-    .map(
-      (entry, index) => `
-    <tr class="${index % 2 === 0 ? "stripe" : ""}">
-      <td>#${index + 1} ${escapeHtml(entry.city)}</td>
-      <td>${formatDisplay(entry.affordability.displayReferenceCost)}</td>
-      <td class="${entry.affordability.projectedBalance >= 0 ? "pos" : "neg"}">${entry.affordability.projectedBalance >= 0 ? "+" : ""}${formatDisplay(entry.affordability.projectedBalance)}</td>
-      <td>${entry.affordability.score}/100</td>
-      <td>${escapeHtml(entry.affordability.verdictLabel)}</td>
-    </tr>`
-    )
-    .join("");
+function buildPageFour(payload: ReportPayload) {
+  const body = `${buildCityProfileTable(payload.bestFitCity, payload)}${buildLargestCategoryGaps(payload)}`;
 
-  return `
-    <h2 class="section-title">City rankings</h2>
-    <table class="index-table compact">
-      <thead>
-        <tr>
-          <th>City</th>
-          <th>Est. cost</th>
-          <th>Balance</th>
-          <th>Relocation affordability score</th>
-          <th>Verdict</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+  return pageShell(
+    4,
+    "About your best-fit city",
+    body,
+    getReportPrivacyNotice(payload.data.privacy_notice),
+    payload
+  );
 }
 
 function cityShortName(city: string) {
@@ -395,63 +395,6 @@ function cityShortName(city: string) {
 
 function userSpendingTotal(spending: Record<string, number>) {
   return BENCHMARK_CATEGORIES.reduce((sum, category) => sum + (spending[category.key] ?? 0), 0);
-}
-
-function buildBenchmarkMatrixTable(
-  payload: ReportPayload,
-  compareResult: LocationCompareResult
-) {
-  const destShort = cityShortName(compareResult.reference_city);
-  const spending = payload.userBenchmarkSpending;
-  const userTotal = userSpendingTotal(spending);
-  const destTotal = compareResult.reference_monthly_total;
-
-  const rows = BENCHMARK_CATEGORIES.map((category, index) => {
-    const userAmount = spending[category.key] ?? 0;
-    const benchmark = compareResult.reference_benchmarks[category.key] ?? 0;
-    const adjusted = benchmark * compareResult.household_size;
-    const symbol = getCategoryPdfSymbol(category.label);
-
-    return `
-      <tr class="${index % 2 === 0 ? "stripe" : ""}">
-        <td>
-          <span class="benchmark-category-label">${symbol} ${escapeHtml(category.label)}</span>
-        </td>
-        <td><span class="spending-pill">${payload.formatExpense(userAmount)}</span></td>
-        <td>
-          <div class="benchmark-city-cell">
-            <div class="benchmark-value-box">${Math.round(benchmark)}</div>
-            <div class="benchmark-mo">${payload.formatReferenceCost(adjusted)}/mo</div>
-          </div>
-        </td>
-      </tr>`;
-  }).join("");
-
-  return `
-    <div class="section-block">
-      <div class="section-heading-row">
-        <h2 class="section-title">Your spending vs ${escapeHtml(destShort)}</h2>
-        <span class="period-chip">${escapeHtml(payload.periodLabel)}</span>
-      </div>
-      <p class="muted-note">Category breakdown for your selected period compared to live reference costs in your #1 recommended city.</p>
-      <table class="benchmark-matrix-table">
-        <thead>
-          <tr>
-            <th>Category</th>
-            <th>Your spending</th>
-            <th>${escapeHtml(destShort)}</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows}
-          <tr class="benchmark-total-row">
-            <td><strong>Total monthly</strong></td>
-            <td><span class="spending-pill spending-pill-total"><strong>${payload.formatExpense(userTotal)}</strong></span></td>
-            <td><strong>${payload.formatReferenceCost(destTotal)}</strong></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>`;
 }
 
 function buildRelocationMetricsStrip(payload: ReportPayload) {
@@ -488,9 +431,11 @@ function buildRelocationMetricsStrip(payload: ReportPayload) {
       tone: aff && aff.projectedBalance >= 0 ? "good" : "mid",
     },
     {
-      label: "Move readiness",
-      value: `${payload.readiness.moveReadinessPct.toFixed(0)}%`,
-      tone: payload.readiness.moveReadinessPct >= 70 ? "good" : "mid",
+      label: "Savings runway",
+      value:
+        payload.readiness.runwayMonths !== null
+          ? `${payload.readiness.runwayMonths.toFixed(1)} mo`
+          : "—",
     },
   ]);
 }
@@ -522,7 +467,7 @@ function buildRelocationStory(payload: ReportPayload) {
   const paragraphs: string[] = [];
 
   paragraphs.push(
-    `For <strong>${escapeHtml(payload.periodLabel)}</strong>, your tracked monthly spending totals <strong>${payload.formatExpense(userTotal)}</strong> across rent, groceries, transport, and other core categories. Based on your scenario, <strong>${escapeHtml(destCity)}</strong> ranks #1 with reference costs around <strong>${payload.formatReferenceCost(destTotal)}/mo</strong> for a ${payload.householdSize}-person ${escapeHtml(payload.lifestyleLabel.toLowerCase())} lifestyle.`
+    `For <strong>${escapeHtml(payload.periodLabel)}</strong>, your tracked monthly spending totals <strong>${payload.formatExpense(userTotal)}</strong> across rent, groceries, transport, and the other benchmark categories shown below. <strong>This total does not include mortgage payment</strong> or expenses outside the relocation comparison matrix. For your scenario, <strong>${escapeHtml(destCity)}</strong> ranks #1 with an estimated monthly living cost of <strong>${payload.formatReferenceCost(destTotal)}/mo</strong> for a ${payload.householdSize}-person ${escapeHtml(payload.lifestyleLabel.toLowerCase())} lifestyle — built from live city price data (WhereNext), not a single rent quote. ${escapeHtml(payload.referenceCostNote ?? MONTHLY_BENCHMARK_NOTE)}`
   );
 
   if (spendingDelta > 0) {
@@ -549,18 +494,18 @@ function buildRelocationStory(payload: ReportPayload) {
 
   if (payload.readiness.runwayMonths !== null) {
     paragraphs.push(
-      `You currently have about <strong>${payload.readiness.runwayMonths.toFixed(1)} months</strong> of runway and a move-readiness score of <strong>${payload.readiness.moveReadinessPct.toFixed(0)}%</strong>${payload.timeline ? ` with a timeline of <strong>${escapeHtml(timelineLabel(payload.timeline))}</strong>` : ""}.`
+      `<strong>Savings runway:</strong> About <strong>${payload.readiness.runwayMonths.toFixed(1)} months</strong> — how long current savings would last with zero income at your current monthly expenses. <strong>Move-readiness score:</strong> <strong>${payload.readiness.moveReadinessPct.toFixed(0)}%</strong> — your monthly surplus expressed as a share of expenses (higher means more room to absorb a cost increase).${payload.timeline ? ` You selected a timeline of <strong>${escapeHtml(timelineLabel(payload.timeline))}</strong>.` : ""} ${escapeHtml(payload.readiness.moveReadinessLabel)}`
     );
   }
 
   return `
-    <div class="relocation-story-box">
+    <div class="relocation-story-box relocation-story-box-large">
       <h2 class="section-title">What this means for your move</h2>
       ${paragraphs.map((paragraph) => `<p class="relocation-story-paragraph">${paragraph}</p>`).join("")}
     </div>`;
 }
 
-function buildCityProfileTable(city: string) {
+function buildCityProfileTable(city: string, payload: ReportPayload) {
   const profile = getCityProfile(city);
   const destShort = cityShortName(city);
 
@@ -573,31 +518,53 @@ function buildCityProfileTable(city: string) {
   ).join("");
 
   return `
-    <div class="section-block chart-panel">
+    <div class="report-section-bordered chart-panel">
       <h2 class="section-title">About ${escapeHtml(destShort)}</h2>
       <p class="muted-note">Indicative city profile for relocation planning — verify locally before deciding.</p>
-      <table class="city-profile-table">
+      <table class="city-profile-table report-table-styled">
         <tbody>${rows}</tbody>
       </table>
       ${profile.notes ? `<p class="muted-note">${escapeHtml(profile.notes)}</p>` : ""}
+      <div class="report-sources-box">
+        <h3 class="report-sources-title">Sources for city &amp; country statistics</h3>
+        <ul class="report-sources-list">
+          ${
+            payload.dataSource
+              ? `<li><strong>Living cost data:</strong> ${escapeHtml(payload.dataSource)}${payload.dataSourceUpdated ? ` (updated ${escapeHtml(payload.dataSourceUpdated)})` : ""}${payload.dataLicense ? ` — ${escapeHtml(payload.dataLicense)}` : ""}</li>`
+              : `<li><strong>Living cost data:</strong> WhereNext City Price Dataset (live API)</li>`
+          }
+          <li><strong>Benchmark method:</strong> ${escapeHtml(MONTHLY_BENCHMARK_NOTE)}</li>
+          <li><strong>City profile facts:</strong> Indicative summaries for planning — confirm with official local sources before relocating.</li>
+        </ul>
+      </div>
     </div>`;
 }
 
-function buildPageTwo(payload: ReportPayload) {
+function buildLargestCategoryGaps(payload: ReportPayload) {
   const compareResult = payload.primaryResult;
   const comparisons = compareResult?.comparisons ?? [];
+  if (!comparisons.length) {
+    return `<p class="muted-note">Run a city comparison in the app to populate category gaps.</p>`;
+  }
 
-  const matrixBlock = compareResult
-      ? buildBenchmarkMatrixTable(payload, compareResult)
-      : `<p class="muted-note">Run a city comparison in the app to populate your spending vs destination costs.</p>`;
+  const hasRentInRecords = (payload.userBenchmarkSpending.rent ?? 0) > 0;
+  const filtered = comparisons.filter((row) => {
+    const key = row.category.toLowerCase();
+    const userAmount = payload.userBenchmarkSpending[key] ?? 0;
+    if (userAmount > 0) return true;
+    if (key === "rent" && !hasRentInRecords) return true;
+    return false;
+  });
 
-  const gapChart =
-    comparisons.length > 0
-      ? `
-    <div class="chart-panel section-block-loose">
+  if (!filtered.length) {
+    return `<p class="muted-note">No category gaps with uploaded spending data for this comparison.</p>`;
+  }
+
+  return `
+    <div class="chart-panel report-section-bordered gap-chart-compact">
       <h2 class="section-title">Largest category gaps</h2>
       ${buildRoundedBarChartHtml(
-        [...comparisons]
+        [...filtered]
           .sort((a, b) => Math.abs(b.difference_pct) - Math.abs(a.difference_pct))
           .slice(0, 5)
           .map((row) => ({
@@ -606,78 +573,11 @@ function buildPageTwo(payload: ReportPayload) {
           })),
         (value) => `${value.toFixed(1)}%`
       )}
-    </div>`
-      : "";
-
-  const body = `
-    <div class="hero-zone">
-      ${buildRelocationStory(payload)}
-      ${buildRelocationMetricsStrip(payload)}
-    </div>
-    ${cityContextBlock(payload.baseCity, payload.bestFitCity)}
-    ${matrixBlock}
-    ${gapChart}
-  `;
-
-  return pageShell(
-    2,
-    "Spending vs best-fit city",
-    body,
-    getReportPrivacyNotice(payload.data.privacy_notice),
-    payload
-  );
-}
-
-function buildPageThree(payload: ReportPayload) {
-  const tip = payload.affordability?.tips[0];
-  const relocationScore = payload.affordability?.score;
-  const aff = payload.affordability;
-
-  const body = `
-    ${buildCityProfileTable(payload.bestFitCity)}
-    <div class="meta-grid city-context-grid section-block">
-      <div><span>Household size</span><strong>${payload.householdSize}</strong></div>
-      <div><span>Lifestyle</span><strong>${escapeHtml(payload.lifestyleLabel)}</strong></div>
-      <div><span>Timeline</span><strong>${escapeHtml(timelineLabel(payload.timeline))}</strong></div>
-      <div><span>Income adjustment</span><strong>${formatPct(payload.incomeChangePct)}</strong></div>
-    </div>
-    ${buildKpiStripHtml([
-      {
-        label: "Relocation score",
-        value: relocationScore !== undefined ? `${relocationScore}/100` : "—",
-        tone: relocationScore !== undefined && relocationScore >= 65 ? "good" : "mid",
-      },
-      {
-        label: "Move readiness",
-        value: `${payload.readiness.moveReadinessPct.toFixed(0)}%`,
-      },
-      {
-        label: "Runway",
-        value:
-          payload.readiness.runwayMonths !== null
-            ? `${payload.readiness.runwayMonths.toFixed(1)} mo`
-            : "—",
-      },
-    ])}
-    ${
-      aff?.tips.length
-        ? `<div class="section-block"><h2 class="section-title">Recommendations</h2><ul class="report-tip-list">${aff.tips.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>`
-        : ""
-    }
-    ${tip ? `<div class="tip-box">${escapeHtml(tip)}</div>` : ""}
-  `;
-
-  return pageShell(
-    3,
-    "Relocation readiness",
-    body,
-    getReportPrivacyNotice(payload.data.privacy_notice),
-    payload
-  );
+    </div>`;
 }
 
 export function buildRelocationReportHtml(payload: ReportPayload) {
-  const body = `${buildPageOne(payload)}${buildPageTwo(payload)}${buildPageThree(payload)}`;
+  const body = `${buildPageOne(payload)}${buildPageTwo(payload)}${buildPageThree(payload)}${buildPageFour(payload)}`;
   return buildReportDocument(`${REPORT_LABEL} Report`, body);
 }
 

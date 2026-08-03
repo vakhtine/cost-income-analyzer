@@ -17,7 +17,13 @@ export const SUPPORTED_UPLOAD_EXTENSIONS = [
 
 export type SupportedUploadExtension = (typeof SUPPORTED_UPLOAD_EXTENSIONS)[number];
 
-export const SUPPORTED_UPLOAD_ACCEPT = SUPPORTED_UPLOAD_EXTENSIONS.join(",");
+export const SUPPORTED_UPLOAD_ACCEPT = [
+  ...SUPPORTED_UPLOAD_EXTENSIONS,
+  "text/csv",
+  "text/tab-separated-values",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+].join(",");
 
 export const SUPPORTED_UPLOAD_LABEL =
   "CSV, TSV, XLSX, XLS, XLSM, XLSB, or ODS";

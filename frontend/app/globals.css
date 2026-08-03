@@ -772,6 +772,7 @@ main {
 }
 
 .drop-area {
+  position: relative;
   border: 2px dashed #94a3b8;
   border-radius: 16px;
   padding: 36px 24px;
@@ -791,6 +792,18 @@ main {
 .drop-area.disabled {
   opacity: 0.7;
   cursor: wait;
+}
+
+.upload-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .drop-icon-wrap {
@@ -1626,6 +1639,53 @@ textarea {
   font-size: 0.85rem;
   color: var(--muted);
   text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 72px;
+}
+
+.simple-chart-pct {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.unknown-merchant-alert {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 2px solid #dc2626;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.unknown-merchant-alert p {
+  margin: 0;
+  color: #991b1b;
+}
+
+.unknown-merchant-alert p + p {
+  margin-top: 8px;
+}
+
+.unknown-merchant-alert strong {
+  color: #7f1d1d;
+}
+
+.quick-stats-sections {
+  display: grid;
+  gap: 18px;
+}
+
+.quick-stats-section-title {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 800;
+  color: #4b5563;
 }
 
 .donut-chart-ui {
@@ -1704,6 +1764,7 @@ textarea {
 
 .category-top-merchants {
   display: block;
+  padding-left: 1.25rem;
   font-size: 0.75rem;
   color: var(--muted);
   font-weight: 400;
@@ -1775,6 +1836,51 @@ textarea {
 .donut-chart-ui-legend-row strong {
   font-size: 0.82rem;
   color: var(--primary-dark);
+  display: grid;
+  grid-template-columns: 1fr 52px;
+  gap: 8px;
+  align-items: center;
+  text-align: right;
+}
+
+.donut-chart-ui-pct {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.composite-gauge-type {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.composite-score-type {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pct-cell-center {
+  text-align: center;
+}
+
+.expense-donut-card .donut-chart-ui-compact.donut-chart-ui-side {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px;
+  align-items: center;
+  min-height: 200px;
+}
+
+.expense-donut-card .donut-chart-ui-side .donut-chart-ui-ring {
+  width: 110px;
+  height: 110px;
+  flex: none;
 }
 
 @media (max-width: 900px) {
@@ -2454,9 +2560,11 @@ textarea {
 /* Phase B — wizard, scenarios, city compare */
 .wizard-progress {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  margin: 40px 0 20px;
+  margin: 40px auto 20px;
+  max-width: 960px;
+  justify-content: center;
 }
 
 .wizard-step {
@@ -3257,6 +3365,12 @@ td.metric-tone-negative,
   font-weight: 700;
 }
 
+td.metric-tone-positive,
+.metric-tone-positive.health-metric-insight-value {
+  color: #047857;
+  font-weight: 700;
+}
+
 .health-metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -3330,8 +3444,65 @@ td.metric-tone-negative,
 .dashboard-charts-compact {
   gap: 14px;
   margin-top: 8px;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
-  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.dashboard-charts-compact .chart-card-compact {
+  display: flex;
+  flex-direction: column;
+  min-height: 280px;
+}
+
+.dashboard-charts-compact .income-chart-card {
+  max-height: none;
+  overflow: visible;
+}
+
+.dashboard-charts-compact .expense-bar-card,
+.dashboard-charts-compact .expense-donut-card {
+  max-height: none;
+  overflow: visible;
+}
+
+.expense-bar-card.chart-card-compact {
+  min-height: 0;
+  max-width: none;
+  padding: 12px 14px;
+  overflow: visible;
+}
+
+.dashboard-charts-compact .chart-card-compact .simple-chart {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.dashboard-charts-compact .expense-donut-card .donut-chart-ui-compact.donut-chart-ui-stacked {
+  flex: 0 0 auto;
+  min-height: auto;
+  max-height: none;
+}
+
+.analyze-edit-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.review-entry-prompts {
+  gap: 14px;
+  align-items: stretch;
+}
+
+.review-entry-prompts .card,
+.review-entry-prompts .mortgage-entry-prompt {
+  margin: 0;
+  height: 100%;
+}
+
+.unknown-category-row select {
+  min-width: 220px;
 }
 
 .chart-card-compact {
@@ -3390,12 +3561,16 @@ td.metric-tone-negative,
   min-height: 0;
   max-height: none;
   flex: 1 1 auto;
+  overflow: visible;
+  padding: 6px;
+  box-sizing: border-box;
 }
 
 .donut-chart-ui-compact .donut-chart-ui-ring svg {
   width: 100%;
   height: 100%;
   display: block;
+  overflow: visible;
 }
 
 .donut-chart-ui-compact .donut-chart-ui-legend {
@@ -3410,6 +3585,7 @@ td.metric-tone-negative,
   min-height: 0;
   max-width: none;
   padding: 12px 14px;
+  overflow: visible;
 }
 
 .expense-donut-card.chart-card-compact h3 {
@@ -3417,7 +3593,35 @@ td.metric-tone-negative,
 }
 
 .expense-donut-card .donut-chart-ui-compact.donut-chart-ui-stacked {
-  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  min-height: auto;
+}
+
+.expense-donut-card .donut-chart-ui-stacked .donut-chart-ui-ring {
+  width: 132px;
+  height: 132px;
+  min-height: 132px;
+  max-height: 132px;
+  margin: 0 auto;
+  flex: 0 0 auto;
+}
+
+.expense-donut-card .donut-chart-ui-stacked .donut-chart-ui-legend {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.dashboard-charts-compact .income-chart-card {
+  min-height: auto;
+  padding-bottom: 16px;
+}
+
+.donut-chart-ui-stacked .donut-chart-ui-ring {
+  overflow: visible;
 }
 
 @media (max-width: 900px) {
@@ -3522,6 +3726,87 @@ td.metric-tone-negative,
   color: var(--muted);
   font-size: 0.88rem;
   line-height: 1.45;
+}
+
+.relocation-profile-inline {
+  margin-top: 18px;
+}
+
+.relocation-profile-note {
+  margin-top: 10px;
+}
+
+.compare-city-readiness-board {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.compare-city-readiness-board h4 {
+  margin: 0 0 14px;
+}
+
+.compare-city-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.compare-city-readiness-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #fafafa, #ffffff);
+}
+
+.compare-city-readiness-card h5 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.compare-city-readiness-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.readiness-card.compact {
+  padding: 10px 12px;
+}
+
+.readiness-card.compact .readiness-value {
+  font-size: 1.05rem;
+  margin-bottom: 0;
+}
+
+.city-compare-readiness {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.city-readiness-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.city-readiness-metric span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.city-readiness-metric strong {
+  font-size: 0.98rem;
+}
+
+.city-compare-health-score {
+  margin: 0 0 8px;
+  font-size: 0.88rem;
+  color: var(--muted);
 }
 
 .recommendation-list {
@@ -3890,4 +4175,218 @@ td.metric-tone-negative,
 .custom-report-panel,
 .currency-settings-panel {
   background: linear-gradient(180deg, #ffffff 0%, #f8fbfd 120px) !important;
+}
+
+.section-kicker {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.readiness-subheading {
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.purchasing-power-index-panel h3,
+.composite-scores-panel h3 {
+  margin-top: 0;
+}
+
+.pp-index-chart {
+  margin: 16px 0;
+}
+
+.pp-index-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 56px;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.pp-index-label {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.pp-index-bar-track {
+  position: relative;
+  height: 22px;
+  background: #eef4f6;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.pp-index-bar {
+  height: 100%;
+  border-radius: 999px;
+  min-width: 8px;
+}
+
+.pp-index-baseline {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.pp-index-value {
+  font-weight: 700;
+  text-align: right;
+}
+
+.dashboard-charts-compact .income-entry-form {
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.dashboard-charts-compact .income-entry-form select {
+  min-width: 0;
+  font-size: 0.88rem;
+}
+
+.volatility-cell-center {
+  text-align: center;
+}
+
+.category-matrix-rent-note {
+  margin-bottom: 14px;
+}
+
+.estimated-rent-cell {
+  background: #fffbeb;
+}
+
+.estimated-rent-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.category-matrix-table th.volatility-cell-center {
+  text-align: center;
+}
+
+.explanatory-callout {
+  margin: 14px 0 0;
+  padding: 14px 16px;
+  border-left: 4px solid #ca8a04;
+  background: #fef9c3;
+  border-radius: 0 10px 10px 0;
+  color: #713f12;
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.pp-index-note {
+  margin: 0;
+  padding: 14px 16px;
+  border-left: 4px solid #ca8a04;
+  background: #fef9c3;
+  border-radius: 0 10px 10px 0;
+  color: #713f12;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.composite-gauge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.composite-gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.composite-gauge-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  fill: var(--ink);
+}
+
+.composite-gauge-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.35;
+}
+
+.composite-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.composite-city-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: #fafbfc;
+}
+
+.composite-city-card-best {
+  border-color: rgba(45, 106, 79, 0.35);
+  background: linear-gradient(135deg, #eef8f2, #ffffff);
+}
+
+.composite-city-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.composite-best-fit {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #047857;
+}
+
+.composite-city-score {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 10px 0 6px;
+}
+
+.composite-city-metrics,
+.composite-rank-note,
+.composite-footnote {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.composite-rank-note {
+  margin-top: 14px;
+  color: var(--ink);
+}
+
+.composite-footnote {
+  margin-top: 10px;
+  font-style: italic;
 }

@@ -2,6 +2,7 @@
 
 import { CategoryIconGlyph } from "@/components/CategoryIconGlyphs";
 import { formatCategoryDisplayName, getCategoryMeta } from "@/lib/category-icons";
+import { formatMerchantList } from "@/lib/merchant-format";
 
 type Props = {
   category: string;
@@ -49,7 +50,7 @@ export function CategoryLabel({
       <span className="category-label-text-block">
         <span>{formatCategoryDisplayName(category)}</span>
         {topMerchants && topMerchants.length > 0 ? (
-          <span className="category-top-merchants">{topMerchants.join(" · ")}</span>
+          <span className="category-top-merchants">{formatMerchantList(topMerchants)}</span>
         ) : null}
       </span>
     </span>

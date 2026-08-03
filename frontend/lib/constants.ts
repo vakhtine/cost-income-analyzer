@@ -49,20 +49,39 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   "Groceries",
   "Restaurants",
   "Transport",
+  "Public Transit",
   "Utilities",
+  "Internet",
   "Subscriptions",
   "Shopping",
   "Healthcare",
+  "Medications",
   "Entertainment",
+  "Hobbies",
   "Insurance",
   "Education",
   "Travel",
+  "Gas & Fuel",
+  "General Merchandise",
+  "Car Payment",
+  "Loan Payment",
+  "Gym Membership",
+  "Alcohol",
+  "Health & Pharmacy",
+  "Discount Retail",
   "Transfer",
   "Salary",
   "Pension",
   "Investment Income",
   "Other Income",
 ];
+
+/** Expense-only categories for pickers (excludes income labels and Transfer). */
+export const EXPENSE_CATEGORY_OPTIONS = DEFAULT_EXPENSE_CATEGORIES.filter(
+  (category) =>
+    resolveTransactionType(category) === "expense" &&
+    category.trim().toLowerCase() !== "transfer"
+);
 
 export const NON_ESSENTIAL_CATEGORIES = new Set([
   "restaurants",
@@ -79,6 +98,8 @@ export const NON_ESSENTIAL_CATEGORIES = new Set([
   "subscriptions",
   "travel",
   "clothing",
+  "hobbies",
+  "alcohol",
 ]);
 
 export const MERCHANT_CATEGORY_HINTS: Record<string, string> = {
@@ -192,9 +213,15 @@ export const CATEGORY_ALIASES: Record<string, string> = {
   "gas and fuel": "gas",
   utilities: "utilities",
   utility: "utilities",
-  internet: "utilities",
-  "mobile phone": "utilities",
-  phone: "utilities",
+  internet: "internet",
+  medications: "medications",
+  medication: "medications",
+  "car payment": "car payment",
+  "public transit": "public transit",
+  "loan payment": "loan payment",
+  "gym membership": "gym membership",
+  hobbies: "hobbies",
+  hobby: "hobbies",
   entertainment: "entertainment",
   subscriptions: "entertainment",
   shopping: "entertainment",
@@ -202,4 +229,6 @@ export const CATEGORY_ALIASES: Record<string, string> = {
   clothing: "entertainment",
   travel: "entertainment",
   software: "entertainment",
+  "mobile phone": "utilities",
+  phone: "utilities",
 };

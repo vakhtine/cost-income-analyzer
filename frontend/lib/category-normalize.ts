@@ -17,6 +17,13 @@ const EXPENSE_CATEGORY_CANONICAL: Record<string, string> = {
   transportation: "Transport",
   insurance: "Insurance",
   entertainment: "Entertainment",
+  internet: "Internet",
+  medications: "Medications",
+  "car payment": "Car Payment",
+  "public transit": "Public Transit",
+  "loan payment": "Loan Payment",
+  "gym membership": "Gym Membership",
+  hobbies: "Hobbies",
 };
 
 export function canonicalExpenseCategory(category: string): string {

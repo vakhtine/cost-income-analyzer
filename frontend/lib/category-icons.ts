@@ -107,8 +107,20 @@ export function getCategoryMeta(category: string): CategoryMeta {
   if (key.includes("utilit") || key.includes("electric")) {
     return { iconId: "utilities", tone: "cat-utilities", symbol: "⚡" };
   }
-  if (key.includes("health") || key.includes("medical") || key.includes("pharmacy") || key.includes("healthcare")) {
+  if (key.includes("health") || key.includes("medical") || key.includes("pharmacy") || key.includes("healthcare") || key.includes("medication")) {
     return { iconId: "health", tone: "cat-health", symbol: "✚" };
+  }
+  if (key.includes("gym") || key.includes("fitness")) {
+    return { iconId: "entertainment", tone: "cat-entertainment", symbol: "▶" };
+  }
+  if (key.includes("hobb")) {
+    return { iconId: "entertainment", tone: "cat-entertainment", symbol: "▶" };
+  }
+  if (key.includes("car payment") || key.includes("auto loan") || key.includes("vehicle payment")) {
+    return { iconId: "transport", tone: "cat-transport", symbol: "🚌" };
+  }
+  if (key.includes("loan payment") || key.includes("student loan") || key.includes("personal loan")) {
+    return { iconId: "default", tone: "cat-default", symbol: "●" };
   }
   if (key.includes("travel") || key.includes("flight") || key.includes("hotel")) {
     return { iconId: "travel", tone: "cat-travel", symbol: "✈" };

@@ -1,15 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { FinancialHealthPanel, PeriodChangePanel } from "@/components/AdvisorView";
+import { AnalyzeEditPrompt } from "@/components/AnalyzeEditPrompt";
+import { FinancialHealthPanel } from "@/components/AdvisorView";
 import { CurrencySettingsPanel } from "@/components/CurrencySettingsPanel";
 import { CustomReportExport } from "@/components/CustomReportExport";
-import { DashboardView } from "@/components/DashboardView";
+import { CategoryChartsPanel } from "@/components/DashboardView";
 import { HeroSection } from "@/components/HeroSection";
 import { IncomeEntryPrompt } from "@/components/IncomeEntryPrompt";
 import { MortgageEntryPrompt } from "@/components/MortgageEntryPrompt";
 import { MultiPeriodView } from "@/components/MultiPeriodView";
-import { PeriodSelect } from "@/components/PeriodSelect";
 import { RelocationExplorer } from "@/components/RelocationExplorer";
 import { ReviewTab } from "@/components/ReviewTab";
 import { CleanStepSummary } from "@/components/StepSummaries";
@@ -42,6 +42,7 @@ export default function HomePage() {
   const [baseCity, setBaseCity] = useState<string>(SUPPORTED_REFERENCE_CITIES[0]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showAnalyzeEditPrompt, setShowAnalyzeEditPrompt] = useState(true);
   const [, startTransition] = useTransition();
   const { formatIncome, formatExpense, settings } = useCurrency();
   const isAllPeriods = selectedPeriod === "All periods";
@@ -102,12 +103,6 @@ export default function HomePage() {
       ? "Average (all periods)"
       : selectedPeriod || analysisData?.periods[analysisData.periods.length - 1] || "";
 
-  const dashboardHeading = isAllPeriods
-    ? "Combined totals — all periods"
-    : isAveragePeriod
-      ? "Average per period — all periods"
-      : `Period details — ${activePeriodLabel}`;
-
   const incomeEntryPeriodLabel =
     !isAllPeriods && !isAveragePeriod && selectedPeriod
       ? selectedPeriod
@@ -127,7 +122,8 @@ export default function HomePage() {
     }
   }, []);
 
-  async function handleUpload(files: File[]) {    setLoading(true);
+  async function handleUpload(files: File[]) {
+    setLoading(true);
     setError("");
     try {
       const result = await analyzeFilesInBrowser(files);
@@ -156,6 +152,9 @@ export default function HomePage() {
 
   function goToStep(step: WizardStep) {
     if (!data && step !== "upload") return;
+    if (step === "analyze") {
+      setShowAnalyzeEditPrompt(true);
+    }
     if (step === "relocate" && data) {
       const relocatePeriod =
         !isAllPeriods && !isAveragePeriod && selectedPeriod
@@ -234,12 +233,21 @@ export default function HomePage() {
                   <p className="insight">No unknown merchants found — you can still add mortgage payments or continue.</p>
                 )}
               </section>
-              <MortgageEntryPrompt
-                data={data}
-                periodLabel={cleanIncomePeriodLabel}
-                periods={data.periods}
-                onUpdate={updateData}
-              />
+              <section className="grid-2 review-entry-prompts">
+                <IncomeEntryPrompt
+                  data={data}
+                  periodLabel={cleanIncomePeriodLabel}
+                  periods={data.periods}
+                  onUpdate={updateData}
+                  context="clean"
+                />
+                <MortgageEntryPrompt
+                  data={data}
+                  periodLabel={cleanIncomePeriodLabel}
+                  periods={data.periods}
+                  onUpdate={updateData}
+                />
+              </section>
               <ReviewTab
                 data={data}
                 onUpdate={updateData}
@@ -271,6 +279,23 @@ export default function HomePage() {
             <div className="stack">
               <CurrencySettingsPanel />
 
+              {showAnalyzeEditPrompt ? (
+                <AnalyzeEditPrompt
+                  onEdit={() => goToStep("clean")}
+                  onContinue={() => setShowAnalyzeEditPrompt(false)}
+                />
+              ) : null}
+
+              {activeAnalysis && (
+                <CategoryChartsPanel
+                  analysis={activeAnalysis}
+                  data={analysisData}
+                  periodLabel={incomeEntryPeriodLabel}
+                  periods={analysisData.periods}
+                  onUpdate={updateData}
+                />
+              )}
+
               {excludedPeriods.length > 0 ? (
                 <section className="card period-exclusion-summary">
                   <p>
@@ -295,29 +320,6 @@ export default function HomePage() {
                 selectedPeriod={selectedPeriod}
                 onPeriodChange={setSelectedPeriod}
               />
-
-              {activeAnalysis && (
-                <>
-                  <div className="period-details-header">
-                    <PeriodSelect
-                      periods={analysisData.periods}
-                      value={selectedPeriod}
-                      onChange={setSelectedPeriod}
-                    />
-                    <h3 className="analyze-section-heading">{dashboardHeading}</h3>
-                  </div>
-                  <DashboardView
-                    analysis={activeAnalysis}
-                    showCharts
-                    data={analysisData}
-                    periodLabel={incomeEntryPeriodLabel}
-                    periods={analysisData.periods}
-                    selectedPeriod={selectedPeriod}
-                    onPeriodChange={setSelectedPeriod}
-                    onUpdate={updateData}
-                  />
-                </>
-              )}
               <CustomReportExport
                 periods={analysisData.periods}
                 requirePeriodSelection
@@ -341,7 +343,7 @@ export default function HomePage() {
                   };
                 }}
               />
-              <PeriodChangePanel data={analysisData} />              {analysisData.periods.length > 1 && <MultiPeriodView data={analysisData} />}
+              {analysisData.periods.length > 1 && <MultiPeriodView data={analysisData} />}
               <div className="wizard-nav">
                 <button className="tab" onClick={() => goToStep("review")}>
                   Back

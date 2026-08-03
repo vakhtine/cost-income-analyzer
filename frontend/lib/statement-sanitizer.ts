@@ -16,6 +16,15 @@ export type SanitizerDownload = {
 
 export const STATEMENT_SANITIZER_DOWNLOADS: SanitizerDownload[] = [
   {
+    id: "upload-template",
+    fileName: "transaction-upload-template.csv",
+    publicPath: "/transaction-upload-template.csv",
+    label: "Upload template (CSV)",
+    note: "Sample rows with supported income and expense categories — including Internet, Medications, Car Payment, and more",
+    buttonLabel: "Download upload template",
+    kind: "excel",
+  },
+  {
     id: "workbook",
     fileName: "Balkans-Statement-Sanitizer.xlsm",
     publicPath: "/Balkans-Statement-Sanitizer.xlsm",

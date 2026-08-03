@@ -13,8 +13,10 @@ export const RECURRING_EXPENSE_CATEGORIES = new Set([
   "mortgage",
   "mortgage payment",
   "loan payment",
+  "car payment",
   "phone",
   "internet",
+  "gym membership",
 ]);
 
 export type ExpenseSpendType = "RECURRING" | "VARIABLE";
@@ -133,35 +135,25 @@ export type AnomalyFlag = {
   description: string;
 };
 
-function categoryHistoricalStats(
+const ANOMALY_PRIOR_MONTH_MULTIPLIER = 10;
+
+function priorPeriodCategoryTotals(
   periodRows: Record<string, Transaction[]>,
   periodOrder: string[],
-  excludePeriod: string
+  targetPeriod: string
 ) {
-  const stats = new Map<string, { amounts: number[]; count: number }>();
+  const currentIndex = periodOrder.indexOf(targetPeriod);
+  if (currentIndex <= 0) return null;
 
-  for (const period of periodOrder) {
-    if (period === excludePeriod) continue;
-    for (const row of periodRows[period] ?? []) {
-      if (!isExpenseTransaction(row)) continue;
-      const key = canonicalExpenseCategory(row.category);
-      const current = stats.get(key) ?? { amounts: [], count: 0 };
-      current.amounts.push(row.abs_amount);
-      current.count += 1;
-      stats.set(key, current);
-    }
+  const priorPeriod = periodOrder[currentIndex - 1];
+  const totals = new Map<string, number>();
+
+  for (const row of filterExpenseTransactions(periodRows[priorPeriod] ?? [])) {
+    const category = canonicalExpenseCategory(row.category);
+    totals.set(category, (totals.get(category) ?? 0) + row.abs_amount);
   }
 
-  const result = new Map<string, { mean: number; std: number; count: number }>();
-  for (const [category, data] of stats) {
-    const avg = mean(data.amounts);
-    result.set(category, {
-      mean: avg,
-      std: stdDev(data.amounts),
-      count: data.count,
-    });
-  }
-  return result;
+  return { priorPeriod, totals };
 }
 
 export function detectAnomalies(
@@ -170,7 +162,7 @@ export function detectAnomalies(
   targetPeriod: string
 ): { anomalies: AnomalyFlag[]; total_transactions: number } {
   const rows = filterExpenseTransactions(periodRows[targetPeriod] ?? []);
-  const historical = categoryHistoricalStats(periodRows, periodOrder, targetPeriod);
+  const priorContext = priorPeriodCategoryTotals(periodRows, periodOrder, targetPeriod);
 
   const merchantGroups = new Map<
     string,
@@ -195,51 +187,30 @@ export function detectAnomalies(
 
   const anomalies: AnomalyFlag[] = [];
 
+  if (!priorContext) {
+    return {
+      anomalies,
+      total_transactions: rows.length,
+    };
+  }
+
+  const { priorPeriod, totals: priorCategoryTotals } = priorContext;
+
   for (const group of merchantGroups.values()) {
-    const baseline = historical.get(group.category);
-    if (!baseline || baseline.count < 2) {
-      const periodTotals = periodOrder
-        .filter((period) => period !== targetPeriod)
-        .map((period) =>
-          (periodRows[period] ?? [])
-            .filter(
-              (row) =>
-                isExpenseTransaction(row) &&
-                canonicalExpenseCategory(row.category) === group.category
-            )
-            .reduce((sum, row) => sum + row.abs_amount, 0)
-        )
-        .filter((total) => total > 0);
+    const priorTotal = priorCategoryTotals.get(group.category) ?? 0;
+    if (priorTotal <= 0) continue;
 
-      if (periodTotals.length >= 1) {
-        const avgPeriodTotal = mean(periodTotals);
-        if (avgPeriodTotal > 0 && group.total >= avgPeriodTotal * 2) {
-          anomalies.push({
-            merchant_name: group.merchant_name,
-            category: group.category,
-            amount: round2(group.total),
-            period: targetPeriod,
-            transaction_count: group.count,
-            multiplier: round2(group.total / avgPeriodTotal),
-            description: `${round2(group.total / avgPeriodTotal)}x your usual spending in this expenses category (based on your other months, not market averages)`,
-          });
-        }
-      }
-      continue;
-    }
-
-    const threshold = Math.max(baseline.mean + baseline.std * 2, baseline.mean * 2.5);
-    if (group.total >= threshold && group.total > baseline.mean * 1.5) {
+    const threshold = priorTotal * ANOMALY_PRIOR_MONTH_MULTIPLIER;
+    if (group.total >= threshold) {
+      const multiplier = round2(group.total / priorTotal);
       anomalies.push({
         merchant_name: group.merchant_name,
         category: group.category,
         amount: round2(group.total),
         period: targetPeriod,
         transaction_count: group.count,
-        multiplier: baseline.mean ? round2(group.total / baseline.mean) : 0,
-        description: baseline.mean
-          ? `${round2(group.total / baseline.mean)}x your usual spending in this expenses category (based on your past months, not market averages)`
-          : "Unusually high compared to your past spending in this expenses category",
+        multiplier,
+        description: `${multiplier}× the prior month (${priorPeriod}) total for this expenses category`,
       });
     }
   }

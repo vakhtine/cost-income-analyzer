@@ -1,25 +1,18 @@
 "use client";
 
-import { useMemo } from "react";
 import { CategoryIcon } from "@/components/CategoryIcon";
-import { DonutChart } from "@/components/DonutChart";
 import { PeriodSelect } from "@/components/PeriodSelect";
 import { IncomeEntryPrompt } from "@/components/IncomeEntryPrompt";
 import { formatCategoryDisplayName } from "@/lib/category-icons";
 import { canonicalExpenseCategory } from "@/lib/category-normalize";
-import { topMerchantsByCategoryMap } from "@/lib/category-merchants";
 import { UI_LABELS } from "@/lib/ui-labels";
 import { useCurrency } from "@/lib/currency-context";
 import { AnalyzeResponse, PeriodAnalysis } from "@/lib/types";
 type Props = {
   analysis: PeriodAnalysis;
-  showCharts?: boolean;
-  data?: AnalyzeResponse;
-  periodLabel?: string;
   periods?: string[];
   selectedPeriod?: string;
   onPeriodChange?: (period: string) => void;
-  onUpdate?: (data: AnalyzeResponse, savedPeriod?: string) => void;
 };
 
 type InsightTone = "positive" | "warning" | "negative" | "info" | "alert";
@@ -90,14 +83,17 @@ export function SimpleBarChart({
   data,
   colors,
   showCategoryIcons = false,
+  showPercent = false,
   formatValue,
 }: {
   data: { name: string; value: number }[];
   colors: string[];
   showCategoryIcons?: boolean;
+  showPercent?: boolean;
   formatValue: (value: number) => string;
 }) {
   const max = Math.max(...data.map((item) => item.value), 1);
+  const total = data.reduce((sum, item) => sum + item.value, 0) || 1;
   return (
     <div className="simple-chart">
       {data.map((item, index) => (
@@ -115,22 +111,31 @@ export function SimpleBarChart({
               }}
             />
           </div>
-          <div className="simple-chart-value">{formatValue(item.value)}</div>        </div>
+          <div className="simple-chart-value">
+            <span>{formatValue(item.value)}</span>
+            {showPercent ? (
+              <span className="simple-chart-pct">{((item.value / total) * 100).toFixed(1)}%</span>
+            ) : null}
+          </div>
+        </div>
       ))}
     </div>
   );
 }
 
-export function DashboardView({
+export function CategoryChartsPanel({
   analysis,
-  showCharts = true,
   data,
   periodLabel,
   periods,
-  selectedPeriod,
-  onPeriodChange,
   onUpdate,
-}: Props) {
+}: {
+  analysis: PeriodAnalysis;
+  data: AnalyzeResponse;
+  periodLabel: string;
+  periods?: string[];
+  onUpdate: (data: AnalyzeResponse, savedPeriod?: string) => void;
+}) {
   const { formatIncome, formatExpense } = useCurrency();
   const incomeData = analysis.income_categories.map((item) => ({
     name: item.category,
@@ -141,21 +146,59 @@ export function DashboardView({
     value: item.total,
   }));
 
-  const merchantSourceRows = useMemo(() => {
-    if (!data) return [];
-    return Object.values(data.period_rows).flat();
-  }, [data]);
-
-  const merchantsMap = useMemo(
-    () => topMerchantsByCategoryMap(merchantSourceRows),
-    [merchantSourceRows]
-  );
-
-  const expenseDonutData = expenseData.slice(0, 5).map((item) => ({
-    ...item,
+  const expenseBarData = expenseData.slice(0, 5).map((item) => ({
     name: canonicalExpenseCategory(item.name),
-    merchants: merchantsMap.get(canonicalExpenseCategory(item.name)),
+    value: item.value,
   }));
+
+  return (
+    <section className="grid-2 dashboard-charts-compact">
+      <div className="card chart-card-compact income-chart-card">
+        <h3>{UI_LABELS.incomeByCategory}</h3>
+        <IncomeEntryPrompt
+          data={data}
+          periodLabel={periodLabel}
+          periods={periods ?? data.periods}
+          onUpdate={onUpdate}
+          context="analyze"
+          embedded
+        />
+        {incomeData.length === 0 ? (
+          <p className="insight">No income recorded for this period yet.</p>
+        ) : (
+          <SimpleBarChart
+            data={incomeData}
+            colors={["#0F766E", "#14B8A6", "#5EEAD4", "#2DD4BF"]}
+            showCategoryIcons
+            formatValue={formatIncome}
+          />
+        )}
+      </div>
+      <div className="card chart-card-compact expense-bar-card">
+        <h3>{UI_LABELS.expensesByCategory}</h3>
+        {expenseData.length === 0 ? (
+          <p className="insight">No expenses recorded for this period.</p>
+        ) : (
+          <SimpleBarChart
+            data={expenseBarData.length ? expenseBarData : expenseData}
+            colors={["#1a6b7c", "#2d9cdb", "#7eb8c9", "#c9a227", "#2d6a4f"]}
+            showCategoryIcons
+            showPercent
+            formatValue={formatExpense}
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function DashboardView({
+  analysis,
+  periods,
+  selectedPeriod,
+  onPeriodChange,
+}: Props) {
+  const { formatIncome, formatExpense } = useCurrency();
 
   return (
     <>
@@ -170,97 +213,19 @@ export function DashboardView({
         </div>
         <div className="metric-card savings">
           <div className="metric-label">Net Savings</div>
-          <div className="metric-value">{formatIncome(analysis.net_savings)}</div>        </div>
+          <div className="metric-value">{formatIncome(analysis.net_savings)}</div>
+        </div>
         <div className="metric-card rate">
           <div className="metric-label">Savings Rate</div>
           <div className="metric-value">{analysis.savings_rate.toFixed(1)}%</div>
         </div>
       </section>
 
-      {showCharts && (
-        <section className="grid-2 dashboard-charts-compact">
-          <div className="card chart-card-compact">
-            <h3>{UI_LABELS.incomeByCategory}</h3>
-            {data && periodLabel && onUpdate && (
-              <IncomeEntryPrompt
-                data={data}
-                periodLabel={periodLabel}
-                periods={periods ?? data.periods}
-                onUpdate={onUpdate}
-                context="analyze"
-                embedded
-              />
-            )}
-            {incomeData.length === 0 ? (
-              <p className="insight">No income recorded for this period yet.</p>
-            ) : (
-              <SimpleBarChart
-                data={incomeData}
-                colors={["#0F766E", "#14B8A6", "#5EEAD4", "#2DD4BF"]}
-                showCategoryIcons
-                formatValue={formatIncome}
-              />
-            )}
-          </div>
-          <div className="card chart-card-compact expense-donut-card">
-            <h3>{UI_LABELS.expensesByCategory}</h3>
-            {expenseData.length > 5 ? (
-              <DonutChart
-                data={expenseDonutData}
-                formatValue={formatExpense}
-                layout="stacked"
-                compact
-              />
-            ) : (
-              <SimpleBarChart
-                data={expenseData}
-                colors={["#F59E0B", "#F97316", "#EF4444", "#8B5CF6", "#6366F1"]}
-                showCategoryIcons
-                formatValue={formatExpense}
-              />
-            )}
-          </div>
-        </section>
-      )}
-
-      <section className="card">
-        <div className="section-heading section-heading-with-period">
-          {periods?.length && selectedPeriod && onPeriodChange ? (
-            <PeriodSelect
-              periods={periods}
-              value={selectedPeriod}
-              onChange={onPeriodChange}
-            />
-          ) : (
-            <span />
-          )}
-          <h3 className="section-heading-content">{UI_LABELS.categoryBreakdown}</h3>
+      {periods?.length && selectedPeriod && onPeriodChange ? (
+        <div className="period-details-header period-details-header-inline">
+          <PeriodSelect periods={periods} value={selectedPeriod} onChange={onPeriodChange} />
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>{UI_LABELS.incomeExpenseCategory}</th>
-              <th>Total</th>
-              <th>% out of total income</th>
-              <th>% out of total expenses</th>
-            </tr>
-          </thead>
-          <tbody>
-            {analysis.expense_categories.map((item) => (
-              <tr key={item.category}>
-                <td>
-                  <span className="category-label-with-icon">
-                    <CategoryIcon category={item.category} size={64} className="category-icon-breakdown" />
-                    {formatCategoryDisplayName(item.category)}
-                  </span>
-                </td>
-                <td>{formatExpense(item.total)}</td>                <td>{item.pct_of_income.toFixed(1)}%</td>
-                <td>{item.pct_of_expenses?.toFixed(1) ?? "-"}%</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      ) : null}
     </>
   );
 }

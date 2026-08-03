@@ -102,73 +102,88 @@ function QuickStatsGrid({ healthScore }: { healthScore: HealthScore }) {
   }
 
   return (
-    <div className="quick-stats-grid">
-      <QuickStatCard
-        label="Income sources"
-        value={String(metrics.income_source_count)}
-        tone={incomeSourceCountTone(metrics.income_source_count)}
-      />
-      <QuickStatCard
-        label="Total expenses"
-        value={formatExpense(metrics.total_expenses)}
-        tone="info"
-      />
-      <QuickStatCard
-        label="Periods analyzed"
-        value={String(metrics.period_count)}
-        tone="info"
-      />
-      <QuickStatCard
-        label="Concentration (HHI, expenses categories)"
-        value={metrics.expense_concentration_hhi.toFixed(2)}
-        tone={concentrationHhiTone(metrics.expense_concentration_hhi)}
-      />
-      <QuickStatCard
-        label={UI_LABELS.topExpensesCategoryShare}
-        value={`${metrics.top_category_share_pct.toFixed(1)}%`}
-        tone={topCategoryShareTone(metrics.top_category_share_pct)}
-      />
-      <QuickStatCard
-        label="Diversification score"
-        value={`${metrics.diversification_score}/100`}
-        tone={diversificationScoreTone(metrics.diversification_score)}
-        detail="HHI-based: spread across expenses categories scores higher; one dominant expenses category scores lower."
-      />
-      <QuickStatCard
-        label="Savings rate"
-        value={`${metrics.savings_rate_pct.toFixed(1)}%`}
-        tone={savingsRateTone(metrics.savings_rate_pct)}
-      />
-      <QuickStatCard
-        label="Total income"
-        value={formatIncome(metrics.total_income)}
-        tone={metrics.total_income > 0 ? "positive" : "negative"}
-      />
-      <QuickStatCard
-        label="Net savings"
-        value={formatIncome(metrics.net_savings)}
-        tone={netSavingsTone(metrics.net_savings)}
-      />
-      <QuickStatCard
-        label={UI_LABELS.expenseVolatility}
-        value={
-          metrics.expense_volatility_pct !== null
-            ? `${metrics.expense_volatility_pct.toFixed(1)}%`
-            : "N/A (single period)"
-        }
-        tone={volatilityPctTone(metrics.expense_volatility_pct)}
-        detail={HEALTH_SCORE_METHODOLOGY.expense_volatility}
-      />
-      <QuickStatCard
-        label="Avg daily spend"
-        value={formatExpense(metrics.avg_daily_spend)}
-        tone="info"
-      />
-      <QuickStatCard
-        label="Largest expenses category"
-        value={metrics.largest_expense_category}
-        tone="info"
-      />
+    <div className="quick-stats-sections">
+      <section className="quick-stats-section">
+        <h4 className="quick-stats-section-title">Income</h4>
+        <div className="quick-stats-grid">
+          <QuickStatCard
+            label="Income sources"
+            value={String(metrics.income_source_count)}
+            tone={incomeSourceCountTone(metrics.income_source_count)}
+          />
+          <QuickStatCard
+            label="Total income"
+            value={formatIncome(metrics.total_income)}
+            tone={metrics.total_income > 0 ? "positive" : "negative"}
+          />
+          <QuickStatCard
+            label="Savings rate"
+            value={`${metrics.savings_rate_pct.toFixed(1)}%`}
+            tone={savingsRateTone(metrics.savings_rate_pct)}
+          />
+          <QuickStatCard
+            label="Net savings"
+            value={formatIncome(metrics.net_savings)}
+            tone={netSavingsTone(metrics.net_savings)}
+          />
+          <QuickStatCard
+            label="Income stability"
+            value={`${healthScore.income_stability_score}/100`}
+            tone={diversificationScoreTone(healthScore.income_stability_score)}
+            detail={HEALTH_SCORE_METHODOLOGY.income_stability}
+          />
+          <QuickStatCard
+            label="Income volatility (month to month)"
+            value={
+              metrics.income_volatility_pct !== null
+                ? `${metrics.income_volatility_pct.toFixed(1)}%`
+                : "N/A (single period)"
+            }
+            tone={volatilityPctTone(metrics.income_volatility_pct)}
+          />
+        </div>
+      </section>
+
+      <section className="quick-stats-section">
+        <h4 className="quick-stats-section-title">Expenses</h4>
+        <div className="quick-stats-grid">
+          <QuickStatCard
+            label="Total expenses"
+            value={formatExpense(metrics.total_expenses)}
+            tone="info"
+          />
+          <QuickStatCard
+            label="Periods analyzed"
+            value={String(metrics.period_count)}
+            tone="info"
+          />
+          <QuickStatCard
+            label="Concentration (HHI, expenses categories)"
+            value={metrics.expense_concentration_hhi.toFixed(2)}
+            tone={concentrationHhiTone(metrics.expense_concentration_hhi)}
+          />
+          <QuickStatCard
+            label={UI_LABELS.topExpensesCategoryShare}
+            value={`${metrics.top_category_share_pct.toFixed(1)}%, ${metrics.largest_expense_category}`}
+            tone={topCategoryShareTone(metrics.top_category_share_pct)}
+          />
+          <QuickStatCard
+            label={UI_LABELS.expenseVolatility}
+            value={
+              metrics.expense_volatility_pct !== null
+                ? `${metrics.expense_volatility_pct.toFixed(1)}%`
+                : "N/A (single period)"
+            }
+            tone={volatilityPctTone(metrics.expense_volatility_pct)}
+            detail={HEALTH_SCORE_METHODOLOGY.expense_volatility}
+          />
+          <QuickStatCard
+            label="Avg daily spend"
+            value={formatExpense(metrics.avg_daily_spend)}
+            tone="info"
+          />
+        </div>
+      </section>
     </div>
   );
 }
@@ -267,9 +282,15 @@ export function FinancialHealthPanel({
                 icon="📊"
               />
               <BreakdownBar
+                label="Expense stability"
+                score={healthScore.expense_stability_score}
+                detail={healthScore.details[2]}
+                icon="📉"
+              />
+              <BreakdownBar
                 label="Non-essential control"
                 score={healthScore.non_essential_score}
-                detail={healthScore.details[2]}
+                detail={healthScore.details[3]}
                 icon="🎯"
               />
             </div>
@@ -289,15 +310,19 @@ export function FinancialHealthPanel({
         <h3>How these scores are calculated</h3>
         <div className="methodology-grid">
           <div>
-            <strong>Savings rate (40% weight)</strong>
+            <strong>Savings rate (30% weight)</strong>
             <p>{HEALTH_SCORE_METHODOLOGY.savings_rate}</p>
           </div>
           <div>
-            <strong>Income stability (30% weight)</strong>
+            <strong>Income stability (25% weight)</strong>
             <p>{HEALTH_SCORE_METHODOLOGY.income_stability}</p>
           </div>
           <div>
-            <strong>Non-essential spending (30% weight)</strong>
+            <strong>Expense stability (25% weight)</strong>
+            <p>{HEALTH_SCORE_METHODOLOGY.expense_stability}</p>
+          </div>
+          <div>
+            <strong>Non-essential spending (20% weight)</strong>
             <p>{HEALTH_SCORE_METHODOLOGY.non_essential}</p>
           </div>
           <div>

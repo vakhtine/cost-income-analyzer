@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchCityMonthlyCost } from "@/lib/city-data";
 import { REFERENCE_CITY_GROUPS } from "@/lib/constants";
 import { useCurrency } from "@/lib/currency-context";
 import { convertAmount, formatMoney } from "@/lib/currency";
 import {
   calculatePurchasingPowerEquivalent,
-  displayPurchasingPowerMultiplier,
+  purchasingPowerMultiplier,
   purchasingPowerRatio,
 } from "@/lib/purchasing-power";
 
@@ -81,6 +81,44 @@ export function PurchasingPowerCalculator({
     }
   }
 
+  useEffect(() => {
+    if (!parsedAmount || sourceCity === destCity || !rates) return;
+
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+
+    (async () => {
+      try {
+        const [sourceCostUsd, destCostUsd] = await Promise.all([
+          fetchCityMonthlyCost(sourceCity, householdSize),
+          fetchCityMonthlyCost(destCity, householdSize),
+        ]);
+        if (cancelled) return;
+
+        const amountUsd = convertAmount(parsedAmount, settings.displayCurrency, "USD", rates);
+        const equivalentUsd = calculatePurchasingPowerEquivalent(
+          amountUsd,
+          sourceCostUsd,
+          destCostUsd
+        );
+        setResult({ amountUsd, equivalentUsd, sourceCostUsd, destCostUsd });
+      } catch (calcError) {
+        if (cancelled) return;
+        setError(
+          calcError instanceof Error ? calcError.message : "Could not calculate purchasing power."
+        );
+        setResult(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceCity, destCity, parsedAmount, rates, settings.displayCurrency, householdSize]);
+
   const currency = settings.displayCurrency;
   const sourceName = sourceCity.split(",")[0];
   const destName = destCity.split(",")[0];
@@ -89,12 +127,7 @@ export function PurchasingPowerCalculator({
     : formatMoney(parsedAmount, currency);
 
   const displayMultiplier = result
-    ? displayPurchasingPowerMultiplier(
-        result.amountUsd,
-        result.equivalentUsd,
-        currency,
-        rates!
-      )
+    ? purchasingPowerMultiplier(result.sourceCostUsd, result.destCostUsd)
     : 0;
 
   return (
@@ -166,11 +199,11 @@ export function PurchasingPowerCalculator({
             <strong className="purchasing-power-badge-value">
               {displayMultiplier.toFixed(1)}×
             </strong>
-            <span className="purchasing-power-badge-vs">vs. {destCity}</span>
+            <span className="purchasing-power-badge-vs">in {sourceName} vs. {destName}</span>
           </div>
           <p className="purchasing-power-multiplier-note">
-            Multiplier reflects city cost differences and adjusts for your selected display currency
-            (e.g. USD vs CAD). Dollar amounts above use live exchange rates.
+            Multiplier shows how much further the same income goes in {sourceName} compared with{" "}
+            {destName}, based on monthly cost-of-living benchmarks (including rent).
           </p>
           <p className="purchasing-power-statement">
             <strong>{displayAmount}</strong> in <strong>{sourceCity}</strong> on average has the

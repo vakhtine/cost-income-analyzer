@@ -1,20 +1,24 @@
 import { PeriodAnalysis } from "@/lib/types";
 import { round2 } from "@/lib/utils";
 
+const STORAGE_KEY = "relocation-profile";
+
 export type RelocationTimeline = "exploring" | "3months" | "6months";
 
 export type RelocationProfile = {
   savingsBalance: number | null;
   timeline: RelocationTimeline | null;
-  targetCity: string | null;
 };
 
-const STORAGE_KEY = "relocation-profile";
+export const RELOCATION_TIMELINE_OPTIONS: { id: RelocationTimeline; label: string }[] = [
+  { id: "exploring", label: "Just exploring" },
+  { id: "3months", label: "Within 3 months" },
+  { id: "6months", label: "Within 6 months" },
+];
 
 export const DEFAULT_RELOCATION_PROFILE: RelocationProfile = {
   savingsBalance: null,
   timeline: null,
-  targetCity: null,
 };
 
 export function loadRelocationProfile(): RelocationProfile {
@@ -27,7 +31,6 @@ export function loadRelocationProfile(): RelocationProfile {
       savingsBalance:
         typeof parsed.savingsBalance === "number" ? parsed.savingsBalance : null,
       timeline: parsed.timeline ?? null,
-      targetCity: typeof parsed.targetCity === "string" ? parsed.targetCity : null,
     };
   } catch {
     return DEFAULT_RELOCATION_PROFILE;
@@ -55,10 +58,10 @@ export function calculateRelocationReadiness(
   const { total_income, total_expenses, net_savings } = analysis;
 
   let runwayMonths: number | null = null;
-  let runwayLabel = "Add optional savings to estimate your runway.";
+  let runwayLabel = "Add optional savings to estimate your savings runway.";
   if (savingsBalance && savingsBalance > 0 && total_expenses > 0) {
     runwayMonths = round2(savingsBalance / total_expenses);
-    runwayLabel = `About ${runwayMonths.toFixed(1)} months of expenses covered by savings.`;
+    runwayLabel = `About ${runwayMonths.toFixed(1)} months of expenses covered by savings (zero income).`;
   }
 
   const moveReadinessPct =
@@ -106,12 +109,12 @@ export function calculateCityRelocationReadiness(
   const hasIncome = incomeDisplay > 0;
 
   let runwayMonths: number | null = null;
-  let runwayLabel = "Add savings and select a city to estimate runway.";
+  let runwayLabel = "Add savings and select a city to estimate savings runway.";
   if (savingsBalance && savingsBalance > 0 && hasCityCost) {
     runwayMonths = round2(savingsBalance / destinationCostDisplay);
-    runwayLabel = `About ${runwayMonths.toFixed(1)} months of ${cityLabel} living costs covered by savings.`;
+    runwayLabel = `About ${runwayMonths.toFixed(1)} months of ${cityLabel} living costs covered by savings (zero income).`;
   } else if (hasCityCost && (!savingsBalance || savingsBalance <= 0)) {
-    runwayLabel = `Enter savings to see how many months of ${cityLabel} costs you could cover.`;
+    runwayLabel = `Enter savings to see how many months of ${cityLabel} costs you could cover with zero income.`;
   } else if (!hasCityCost) {
     runwayLabel = "Select a city to load estimated monthly living costs.";
   }

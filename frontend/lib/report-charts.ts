@@ -200,11 +200,69 @@ export function buildRoundedBarChartHtml(
     .join("");
 }
 
+export function buildVerticalBarChartHtml(
+  items: { label: string; value: number; sublabel?: string }[],
+  formatValue: (value: number) => string
+) {
+  if (!items.length) {
+    return `<p class="muted-note">No expense merchants recorded for this period.</p>`;
+  }
+
+  const max = Math.max(...items.map((item) => item.value), 1);
+  const bars = items
+    .map((item) => {
+      const heightPct = Math.max(10, Math.round((item.value / max) * 100));
+      const shortLabel =
+        item.label.length > 14 ? `${item.label.slice(0, 13)}…` : item.label;
+      return `
+      <div class="vbar-item">
+        <div class="vbar-amount">${formatValue(item.value)}</div>
+        <div class="vbar-track">
+          <div class="vbar-fill" style="height:${heightPct}%"></div>
+        </div>
+        <div class="vbar-label" title="${escapeHtml(item.label)}">${escapeHtml(shortLabel)}</div>
+        ${item.sublabel ? `<div class="vbar-sublabel">${escapeHtml(item.sublabel)}</div>` : ""}
+      </div>`;
+    })
+    .join("");
+
+  return `<div class="vertical-bar-chart">${bars}</div>`;
+}
+
+export function buildVerticalRankChartHtml(
+  items: { label: string; value: number; sublabel?: string }[]
+) {
+  if (!items.length) {
+    return `<p class="muted-note">No expense merchants recorded for this period.</p>`;
+  }
+
+  const max = Math.max(...items.map((item) => item.value), 1);
+  const bars = items
+    .map((item, index) => {
+      const heightPct = Math.max(10, Math.round((item.value / max) * 100));
+      const shortLabel =
+        item.label.length > 14 ? `${item.label.slice(0, 13)}…` : item.label;
+      return `
+      <div class="vbar-item">
+        <div class="vbar-amount">#${index + 1}</div>
+        <div class="vbar-track">
+          <div class="vbar-fill" style="height:${heightPct}%"></div>
+        </div>
+        <div class="vbar-label" title="${escapeHtml(item.label)}">${escapeHtml(shortLabel)}</div>
+        ${item.sublabel ? `<div class="vbar-sublabel">${escapeHtml(item.sublabel)}</div>` : ""}
+      </div>`;
+    })
+    .join("");
+
+  return `<div class="vertical-bar-chart vertical-rank-chart">${bars}</div>`;
+}
+
 export function buildKpiStripHtml(
-  items: { label: string; value: string; tone?: string }[]
+  items: { label: string; value: string; tone?: string }[],
+  compact = false
 ) {
   return `
-    <div class="kpi-strip">
+    <div class="kpi-strip${compact ? " kpi-strip-compact" : ""}">
       ${items
         .map(
           (item) => `
@@ -218,7 +276,6 @@ export function buildKpiStripHtml(
 }
 
 export function buildReportIntroBlock(
-  generatedAt: string,
   periodLabel: string,
   displayCurrency: string,
   privacyNotice: string,
@@ -227,7 +284,45 @@ export function buildReportIntroBlock(
   return `
     <div class="report-intro-block">
       <div class="privacy-banner privacy-banner-once">${escapeHtml(privacyNotice)}</div>
-      <p class="report-meta-line"><strong>Period:</strong> ${escapeHtml(periodLabel)} · <strong>Currency:</strong> ${escapeHtml(displayCurrency)} · <strong>Generated:</strong> ${escapeHtml(generatedAt)}</p>
+      <p class="report-meta-line"><strong>Period:</strong> ${escapeHtml(periodLabel)} · <strong>Currency:</strong> ${escapeHtml(displayCurrency)}</p>
       ${shortNote ? `<p class="report-intro-note">${escapeHtml(shortNote)}</p>` : ""}
     </div>`;
+}
+
+export function computeRelocationOverviewScores(aff: {
+  scenarioIncomeDisplay: number;
+  displayReferenceCost: number;
+  projectedBalance: number;
+}) {
+  const incomeVsCost = Math.round(
+    Math.min(
+      100,
+      Math.max(0, (aff.scenarioIncomeDisplay / Math.max(aff.displayReferenceCost, 1)) * 100)
+    )
+  );
+  const balanceOutlook =
+    aff.projectedBalance >= 0
+      ? Math.min(
+          100,
+          85 +
+            Math.round((aff.projectedBalance / Math.max(aff.displayReferenceCost, 1)) * 15)
+        )
+      : Math.round(
+          Math.max(
+            0,
+            50 + (aff.projectedBalance / Math.max(aff.scenarioIncomeDisplay, 1)) * 100
+          )
+        );
+  const savingsRateFit = Math.round(
+    Math.min(
+      100,
+      Math.max(
+        0,
+        (aff.projectedBalance / Math.max(aff.scenarioIncomeDisplay, 1)) * 100 + 50
+      )
+    )
+  );
+  const heroScore = Math.round((incomeVsCost + balanceOutlook + savingsRateFit) / 3);
+
+  return { incomeVsCost, balanceOutlook, savingsRateFit, heroScore };
 }

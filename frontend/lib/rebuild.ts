@@ -3,6 +3,7 @@ import { buildPeriodAdvice, detectCategorizationIssues } from "@/lib/advisor";
 import {
   calculateHealthScore,
   calculateHealthScoreForPeriod,
+  computeOverallHealthScore,
   healthSummary,
 } from "@/lib/health-score";
 import { comparePeriods } from "@/lib/period-analyzer";
@@ -217,22 +218,26 @@ export function healthScoreForPeriodSelection(
     return {
       ...combinedScore,
       income_stability_score: multiPeriodScore.income_stability_score,
-      overall: Math.round(
-        combinedScore.savings_rate_score * 0.4 +
-          multiPeriodScore.income_stability_score * 0.3 +
-          combinedScore.non_essential_score * 0.3
-      ),
+      expense_stability_score: multiPeriodScore.expense_stability_score,
+      overall: computeOverallHealthScore({
+        savings_rate_score: combinedScore.savings_rate_score,
+        income_stability_score: multiPeriodScore.income_stability_score,
+        expense_stability_score: multiPeriodScore.expense_stability_score,
+        non_essential_score: combinedScore.non_essential_score,
+      }),
       summary: healthSummary(
-        Math.round(
-          combinedScore.savings_rate_score * 0.4 +
-            multiPeriodScore.income_stability_score * 0.3 +
-            combinedScore.non_essential_score * 0.3
-        )
+        computeOverallHealthScore({
+          savings_rate_score: combinedScore.savings_rate_score,
+          income_stability_score: multiPeriodScore.income_stability_score,
+          expense_stability_score: multiPeriodScore.expense_stability_score,
+          non_essential_score: combinedScore.non_essential_score,
+        })
       ),
       details: [
         combinedScore.details[0],
         multiPeriodScore.details[1],
-        combinedScore.details[2],
+        multiPeriodScore.details[2],
+        combinedScore.details[3],
       ],
       metrics: combinedScore.metrics
         ? {

@@ -20,7 +20,9 @@ import {
 
   getAllUsedCategories,
   getKnownExpenseCategories,
+  getExpenseCategoryOptions,
   getMerchantCategoryOptions,
+  getPeriodsWithUnknownTransactions,
   getUnknownMerchants,
 
   mergeEditableRowsIntoPeriodRows,
@@ -184,7 +186,16 @@ export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEdito
     [allRows]
   );
 
+  const expenseCategoryOptions = useMemo(
+    () => getExpenseCategoryOptions(allRows),
+    [allRows]
+  );
+
   const unknownMerchants = useMemo(() => getUnknownMerchants(periodRows), [periodRows]);
+  const periodsWithUnknowns = useMemo(
+    () => getPeriodsWithUnknownTransactions(data.period_rows, data.periods),
+    [data.period_rows, data.periods]
+  );
 
   const actionableFlags = useMemo(
 
@@ -365,6 +376,14 @@ export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEdito
 
 
   function applyUnknown() {
+    const pending = Object.entries(unknownAssignments).filter(([, category]) => category.trim());
+    if (!pending.length) {
+      showStatus({
+        kind: "info",
+        message: "Select an expenses category for at least one merchant before applying.",
+      });
+      return;
+    }
 
     const updated = applyUnknownAssignments(periodRows, unknownAssignments);
 
@@ -575,10 +594,23 @@ export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEdito
           on the card or account you paid.
         </p>
 
-        <p>
-          Assign unknown merchants to an expenses category, type a new one if needed, or choose
-          Transfer.
-        </p>
+        <div className="unknown-merchant-alert">
+          <p>
+            Assign unknown merchants to an expenses category from the list below, or choose Transfer.
+          </p>
+
+          {periodsWithUnknowns.length > 0 ? (
+            <p className="insight">
+              Unknown or uncategorized transactions found in:{" "}
+              <strong>{periodsWithUnknowns.join(", ")}</strong>
+              {periodsWithUnknowns.length > 1
+                ? `. Select each period above to categorize its merchants.`
+                : "."}
+            </p>
+          ) : (
+            <p className="insight">No unknown merchants in any period.</p>
+          )}
+        </div>
 
         {unknownMerchants.length === 0 ? (
 
@@ -589,26 +621,27 @@ export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEdito
           <>
 
             {unknownMerchants.map((merchant) => (
-              <div key={merchant.merchant_name} className="form-row">
+              <div key={merchant.merchant_name} className="form-row unknown-category-row">
                 <span>
                   <strong>{merchant.merchant_name}</strong> — {formatCurrency(merchant.total)}
                 </span>
-                <input
-                  list={`unknown-category-options-${merchant.merchant_name}`}
-                  value={unknownAssignments[merchant.merchant_name] ?? knownCategories[0] ?? ""}
+                <select
+                  value={unknownAssignments[merchant.merchant_name] ?? ""}
                   onChange={(event) =>
                     setUnknownAssignments((current) => ({
                       ...current,
                       [merchant.merchant_name]: event.target.value,
                     }))
                   }
-                  placeholder="Expenses category"
-                />
-                <datalist id={`unknown-category-options-${merchant.merchant_name}`}>
-                  {merchantCategoryOptions.map((category) => (
-                    <option key={category} value={category} />
+                >
+                  <option value="">Select expenses category…</option>
+                  {expenseCategoryOptions.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
                   ))}
-                </datalist>
+                  <option value={TRANSFER_CATEGORY_LABEL}>{TRANSFER_CATEGORY_LABEL}</option>
+                </select>
               </div>
             ))}
 

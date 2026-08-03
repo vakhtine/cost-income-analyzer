@@ -1,5 +1,6 @@
 import {
   DEFAULT_EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORY_OPTIONS,
   RawRow,
   resolveTransactionType,
   TRANSFER_CATEGORY_LABEL,
@@ -50,8 +51,20 @@ export function getAllUsedCategories(rows: Transaction[]) {
   return [...categories].sort((a, b) => a.localeCompare(b));
 }
 
+export function getExpenseCategoryOptions(rows: Transaction[]) {
+  const options = new Set<string>(
+    EXPENSE_CATEGORY_OPTIONS.map((category) => canonicalExpenseCategory(category))
+  );
+  for (const row of filterExpenseTransactions(rows)) {
+    if (!isUnknownCategory(row.category)) {
+      options.add(canonicalExpenseCategory(row.category));
+    }
+  }
+  return [...options].sort((a, b) => a.localeCompare(b));
+}
+
 export function getMerchantCategoryOptions(rows: Transaction[]) {
-  const options = new Set(getAllUsedCategories(rows));
+  const options = new Set(getExpenseCategoryOptions(rows));
   options.add(TRANSFER_CATEGORY_LABEL);
   return [...options].sort((a, b) => a.localeCompare(b));
 }
@@ -66,6 +79,13 @@ export function getUnknownMerchants(rows: Transaction[]) {
   return [...totals.entries()]
     .map(([merchant_name, total]) => ({ merchant_name, total }))
     .sort((a, b) => b.total - a.total);
+}
+
+export function getPeriodsWithUnknownTransactions(
+  periodRows: Record<string, Transaction[]>,
+  periodOrder: string[]
+) {
+  return periodOrder.filter((period) => getUnknownMerchants(periodRows[period] ?? []).length > 0);
 }
 
 export function countUnknownTransactions(rows: Transaction[]) {

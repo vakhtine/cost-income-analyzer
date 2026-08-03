@@ -12,6 +12,8 @@ type Props = {
   onSpendingPeriodChange: (period: string) => void;
   onBenchmarkChange: (city: string, categoryKey: string, value: number) => void;
   onResetCity: (city: string) => void;
+  rentIsEstimated?: boolean;
+  currentLocationLabel?: string;
 };
 
 export function CategoryBenchmarkMatrix({
@@ -22,6 +24,8 @@ export function CategoryBenchmarkMatrix({
   onSpendingPeriodChange,
   onBenchmarkChange,
   onResetCity,
+  rentIsEstimated = false,
+  currentLocationLabel,
 }: Props) {
   if (!cities.length) return null;
 
@@ -35,9 +39,10 @@ export function CategoryBenchmarkMatrix({
       <div className="section-heading">
         <h3>Category costs by city</h3>
         <p>
-          Compare rent, groceries, gas, and other monthly categories across destinations. Edit any
-          city value to model your own rent quote or lifestyle assumptions.{" "}
-          <strong>Your spending</strong> reflects the period you select below.
+          Default amounts come from live public city price data (WhereNext). Tap any destination
+          cell to model your own rent quote or lifestyle — highlighted cells are your overrides.
+          <strong> Relocation fit</strong> and <strong>financial health scores</strong> for each
+          compare city recalculate immediately from the updated category totals.
         </p>
       </div>
 
@@ -51,6 +56,16 @@ export function CategoryBenchmarkMatrix({
           ))}
         </select>
       </label>
+
+      {rentIsEstimated ? (
+        <p className="explanatory-callout category-matrix-rent-note">
+          No rent expense appears in your uploaded financial records for this period. An approximate
+          equivalent rent for {currentLocationLabel ? <strong>{currentLocationLabel}</strong> : "your current location"}{" "}
+          is shown in <strong>Your spending → Rent</strong>, estimated from public city price data
+          (WhereNext) for your selected lifestyle and household size — the same sources used for
+          compare cities.
+        </p>
+      ) : null}
 
       <div className="table-scroll">
         <table className="category-matrix-table">
@@ -71,7 +86,12 @@ export function CategoryBenchmarkMatrix({
                     <CategoryIcon category={category.label} size={56} className="category-icon-matrix" />
                     <strong>{category.label}</strong>
                   </span>
-                </td>                <td>{formatCurrency(userSpending[category.key] ?? 0)}</td>
+                </td>                <td className={category.key === "rent" && rentIsEstimated ? "estimated-rent-cell" : ""}>
+                  {formatCurrency(userSpending[category.key] ?? 0)}
+                  {category.key === "rent" && rentIsEstimated ? (
+                    <span className="estimated-rent-tag">est.</span>
+                  ) : null}
+                </td>
                 {cities.map((city) => {
                   const benchmark = city.reference_benchmarks[category.key] ?? 0;
                   const adjusted = benchmark * city.household_size;

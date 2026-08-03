@@ -60,7 +60,8 @@ export function metricToneToBand(tone: MetricTone): "excellent" | "good" | "bad"
 }
 
 export function reportChangeToneClass(changePct: number) {
-  if (Math.abs(changePct) >= 50) return "neg";
+  if (changePct < -5) return "pos";
+  if (changePct > 5) return "neg";
   return "";
 }
 
@@ -70,17 +71,13 @@ export function reportVolatilityToneClass(volatilityPct: number, avgAmount: numb
 }
 
 export function categoryTrendChangeTone(
-  currentTotal: number,
-  priorTotal: number,
+  _currentTotal: number,
+  _priorTotal: number,
   changePct: number
-): "" | "negative" {
-  if (Math.abs(changePct) >= 50) return "negative";
-  const dollarChange = Math.abs(currentTotal - priorTotal);
-  const highDollar = dollarChange >= 50;
-  const highPct = Math.abs(changePct) >= 5;
-  if (highDollar && highPct && changePct > 0) {
-    return "negative";
-  }
+): "" | "positive" | "negative" {
+  if (Math.abs(changePct) < 5) return "";
+  if (changePct < 0) return "positive";
+  if (changePct > 0) return "negative";
   return "";
 }
 

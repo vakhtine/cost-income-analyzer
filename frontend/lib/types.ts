@@ -63,6 +63,7 @@ export type HealthScore = {
   overall: number;
   savings_rate_score: number;
   income_stability_score: number;
+  expense_stability_score: number;
   non_essential_score: number;
   summary: string;
   details: string[];

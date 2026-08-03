@@ -1,33 +1,43 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CompositeScoresPanel } from "@/components/CompositeScoresPanel";
+import { PurchasingPowerIndexPanel } from "@/components/PurchasingPowerIndexPanel";
 import { CategoryBenchmarkMatrix } from "@/components/CategoryBenchmarkMatrix";
 import { CityCompareGrid } from "@/components/CityCompareGrid";
-import { CityRecommender } from "@/components/CityRecommender";
 import { CustomReportExport } from "@/components/CustomReportExport";
 import { CurrencySettingsPanel } from "@/components/CurrencySettingsPanel";
-import { RelocationProfilePanel } from "@/components/RelocationProfilePanel";
 import { RelocationReportExport } from "@/components/RelocationReportExport";
 import { PurchasingPowerCalculator } from "@/components/PurchasingPowerCalculator";
 import { MultiCityCostComparison } from "@/components/MultiCityCostComparison";
-import { RelocationVerdict } from "@/components/RelocationVerdict";
 import {
   compareMultipleCities,
+  fetchCityMonthlyCost,
+  fetchCityRentEstimate,
   getUserBenchmarkSpending,
+  hasCustomBenchmarks,
   MONTHLY_BENCHMARK_NOTE,
   rebuildLocationResult,
-  referenceSavingsPct,
 } from "@/lib/city-data";
 import { ALL_REFERENCE_CITIES, REFERENCE_CITY_GROUPS } from "@/lib/constants";
-import { CityRecommendation, recommendCitiesForSpending } from "@/lib/city-recommender";
+import { recommendCitiesForSpending } from "@/lib/city-recommender";
 import { useCurrency } from "@/lib/currency-context";
 import {
   AVERAGE_PERIOD_LABEL,
   analyzeAveragePeriods,
   buildAveragePeriodRows,
+  healthScoreForPeriodSelection,
   resolvePeriodReportSelection,
 } from "@/lib/rebuild";
-import { loadRelocationProfile, calculateRelocationReadiness } from "@/lib/relocation-profile";
+import {
+  buildCompositeScoreEntries,
+  buildPurchasingPowerIndexEntries,
+  CompositeScoreEntry,
+  PurchasingPowerIndexEntry,
+} from "@/lib/relocation-composite";
+import { convertAmount } from "@/lib/currency";
+import { adjustHealthScoreForScenarioIncome } from "@/lib/health-score";
+import { loadRelocationProfile, calculateCityRelocationReadiness, RELOCATION_TIMELINE_OPTIONS, RelocationProfile, RelocationTimeline, saveRelocationProfile } from "@/lib/relocation-profile";
 import {
   applyScenarioToLocationResult,
   buildCitySummaries,
@@ -36,7 +46,7 @@ import {
 import { AffordabilityCurrencyContext } from "@/lib/relocation-affordability";
 import { combinePeriodRowsInRange } from "@/lib/spending-metrics";
 import { AnalyzeResponse, LocationCompareResult } from "@/lib/types";
-import { LIFESTYLE_OPTIONS, LifestyleLevel } from "@/lib/wizard";
+import { LIFESTYLE_OPTIONS, LifestyleLevel, lifestyleMultiplier } from "@/lib/wizard";
 
 function CitySelect({
   value,
@@ -93,18 +103,51 @@ export function RelocationExplorer({
   const [cityResults, setCityResults] = useState<LocationCompareResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [compareNotice, setCompareNotice] = useState("");
-  const [topRecommendations, setTopRecommendations] = useState<CityRecommendation[]>([]);
-  const [profilePeriod, setProfilePeriod] = useState(locationPeriod);
+  const [relocationProfile, setRelocationProfile] = useState<RelocationProfile>(() =>
+    loadRelocationProfile()
+  );
+  const [profileSavedNotice, setProfileSavedNotice] = useState("");
   const [spendingPeriod, setSpendingPeriod] = useState(locationPeriod);
-  const { formatIncome, formatExpense, formatUsd, formatDisplay, convertIncome, settings, rates } =
+  const [homeMonthlyCostDisplay, setHomeMonthlyCostDisplay] = useState<number | null>(null);
+  const { formatIncome, formatExpense, formatUsd, formatDisplay, convertIncome, convertExpense, settings, rates } =
     useCurrency();
 
-  const profileAnalysis = data.period_analysis[profilePeriod] ?? null;
+  useEffect(() => {
+    saveRelocationProfile(relocationProfile);
+  }, [relocationProfile]);
+
   const spendingRows = data.period_rows[spendingPeriod] ?? [];
   const spendingUserSpending = useMemo(
     () => getUserBenchmarkSpending(spendingRows),
     [spendingRows]
   );
+  const [estimatedRent, setEstimatedRent] = useState<number | null>(null);
+  const rentIsEstimated = (spendingUserSpending.rent ?? 0) === 0 && estimatedRent !== null;
+
+  useEffect(() => {
+    if ((spendingUserSpending.rent ?? 0) > 0) {
+      setEstimatedRent(null);
+      return;
+    }
+    let cancelled = false;
+    fetchCityRentEstimate(baseCity, householdSize, lifestyleMultiplier(lifestyle))
+      .then((rent) => {
+        if (!cancelled) setEstimatedRent(rent);
+      })
+      .catch(() => {
+        if (!cancelled) setEstimatedRent(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseCity, householdSize, lifestyle, spendingUserSpending.rent]);
+
+  const displayUserSpending = useMemo(() => {
+    if (rentIsEstimated && estimatedRent !== null) {
+      return { ...spendingUserSpending, rent: estimatedRent };
+    }
+    return spendingUserSpending;
+  }, [spendingUserSpending, rentIsEstimated, estimatedRent]);
 
   const isAveragePeriod = locationPeriod === AVERAGE_PERIOD_LABEL;
   const periodRows = isAveragePeriod
@@ -119,7 +162,7 @@ export function RelocationExplorer({
   useEffect(() => {
     setCityResults([]);
     setCompareNotice("");
-  }, [data.period_rows, locationPeriod]);
+  }, [data.period_rows, locationPeriod, baseCity]);
 
   const scenarioIncomeNote = useMemo(() => {
     const adjustment =
@@ -185,6 +228,114 @@ export function RelocationExplorer({
     return buildCitySummaries(periodAnalysis, cityResults, scenario, currencyContext);
   }, [periodAnalysis, cityResults, scenario, currencyContext]);
 
+  const customBenchmarksActive = useMemo(
+    () => hasCustomBenchmarks(cityResults),
+    [cityResults]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const usdCost = await fetchCityMonthlyCost(baseCity, householdSize);
+        const lifestyleCost = usdCost * lifestyleMultiplier(lifestyle);
+        const displayCost = convertAmount(
+          lifestyleCost,
+          "USD",
+          settings.displayCurrency,
+          currencyContext.rates
+        );
+        if (!cancelled) setHomeMonthlyCostDisplay(displayCost);
+      } catch {
+        if (!cancelled && periodAnalysis) {
+          setHomeMonthlyCostDisplay(convertIncome(periodAnalysis.total_expenses));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    baseCity,
+    householdSize,
+    lifestyle,
+    periodAnalysis,
+    settings.displayCurrency,
+    currencyContext.rates,
+    convertIncome,
+  ]);
+
+  const scenarioIncomeDisplay = useMemo(() => {
+    if (!periodAnalysis) return 0;
+    return convertIncome(periodAnalysis.total_income) * (1 + incomeChangePct / 100);
+  }, [periodAnalysis, convertIncome, incomeChangePct]);
+
+  const baseHealthScore = useMemo(() => {
+    if (!periodAnalysis) return data.health_score;
+    return healthScoreForPeriodSelection(
+      data.period_rows,
+      locationPeriod,
+      data.periods
+    );
+  }, [data.health_score, data.period_rows, data.periods, locationPeriod, periodAnalysis]);
+
+  const scenarioHealthScore = useMemo(() => {
+    if (!periodAnalysis) return baseHealthScore.overall;
+    const baseIncome = baseHealthScore.metrics?.total_income ?? periodAnalysis.total_income;
+    const baseExpenses = baseHealthScore.metrics?.total_expenses ?? periodAnalysis.total_expenses;
+    const incomeFactor = 1 + incomeChangePct / 100;
+    return adjustHealthScoreForScenarioIncome(
+      baseHealthScore,
+      baseIncome * incomeFactor,
+      baseExpenses,
+      periodRows,
+      { focusPeriod: periodDisplayLabel }
+    ).overall;
+  }, [
+    baseHealthScore,
+    periodAnalysis,
+    periodRows,
+    incomeChangePct,
+    periodDisplayLabel,
+  ]);
+
+  const purchasingPowerEntries = useMemo((): PurchasingPowerIndexEntry[] => {
+    if (!homeMonthlyCostDisplay || !citySummaries.length) return [];
+    return buildPurchasingPowerIndexEntries(
+      baseCity,
+      homeMonthlyCostDisplay,
+      citySummaries.map((summary) => ({
+        city: summary.city,
+        monthlyCost: summary.affordability.displayReferenceCost,
+      }))
+    );
+  }, [baseCity, citySummaries, homeMonthlyCostDisplay]);
+
+  const compositeEntries = useMemo((): CompositeScoreEntry[] => {
+    if (!homeMonthlyCostDisplay || !citySummaries.length) return [];
+    return buildCompositeScoreEntries({
+      homeCity: baseCity,
+      homeMonthlyCost: homeMonthlyCostDisplay,
+      baseHealthScore,
+      expenseRows: periodRows,
+      incomeChangePct,
+      toDisplayExpense: convertExpense,
+      savingsBalance: relocationProfile.savingsBalance,
+      citySummaries,
+    });
+  }, [
+    baseCity,
+    citySummaries,
+    baseHealthScore,
+    periodRows,
+    incomeChangePct,
+    convertExpense,
+    homeMonthlyCostDisplay,
+    relocationProfile.savingsBalance,
+  ]);
+
   const bestFitFromComparison = useMemo(() => {
     if (!citySummaries.length) return null;
     return [...citySummaries].sort((a, b) => {
@@ -197,11 +348,7 @@ export function RelocationExplorer({
     })[0];
   }, [citySummaries]);
 
-  const verdictAffordability = bestFitFromComparison?.affordability ?? primaryAffordability;
-  const verdictResult = bestFitFromComparison?.result ?? primaryResult;
-
   const buildReportPayload = useCallback(async (exportPeriod: string) => {
-    const profile = loadRelocationProfile();
     const isExportAverage = exportPeriod === AVERAGE_PERIOD_LABEL;
     const exportPeriodAnalysis = isExportAverage
       ? analyzeAveragePeriods(data.period_rows)
@@ -211,33 +358,36 @@ export function RelocationExplorer({
       : data.period_rows[exportPeriod] ?? periodRows;
     const exportPeriodLabel = isExportAverage ? "Average (all periods)" : exportPeriod;
 
-    const readiness = exportPeriodAnalysis
-      ? calculateRelocationReadiness(exportPeriodAnalysis, profile.savingsBalance)
-      : {
-          runwayMonths: null,
-          runwayLabel: "",
-          moveReadinessPct: 0,
-          moveReadinessLabel: "",
-          incomeCoveragePct: 0,
-          incomeCoverageLabel: "",
-        };
     const lifestyleOption = LIFESTYLE_OPTIONS.find((item) => item.id === lifestyle);
+    const rankedCities = selectedCities.filter((city) => city && city !== baseCity);
 
-    let recommendations = topRecommendations;
-    if (!recommendations.length && exportPeriodAnalysis) {
-      const rankedCities = selectedCities.filter((city) => city && city !== baseCity);
-      recommendations = await recommendCitiesForSpending(
-        exportPeriodRows,
-        exportPeriodAnalysis,
-        exportPeriodLabel,
-        householdSize,
-        scenario,
-        [baseCity],
-        rankedCities.length ? rankedCities.length : 3,
-        rankedCities.length ? rankedCities : undefined,
-        currencyContext
-      );
+    let userBenchmarkSpending = getUserBenchmarkSpending(exportPeriodRows);
+    if ((userBenchmarkSpending.rent ?? 0) === 0) {
+      try {
+        const rent = await fetchCityRentEstimate(
+          baseCity,
+          householdSize,
+          lifestyleMultiplier(lifestyle)
+        );
+        userBenchmarkSpending = { ...userBenchmarkSpending, rent };
+      } catch {
+        // Keep rent at 0 when public estimate is unavailable.
+      }
     }
+
+    let recommendations = exportPeriodAnalysis
+      ? await recommendCitiesForSpending(
+          exportPeriodRows,
+          exportPeriodAnalysis,
+          exportPeriodLabel,
+          householdSize,
+          scenario,
+          [baseCity],
+          rankedCities.length ? rankedCities.length : 3,
+          rankedCities.length ? rankedCities : undefined,
+          currencyContext
+        )
+      : [];
 
     const bestFitCity =
       bestFitFromComparison?.city ?? recommendations[0]?.city ?? primaryCity;
@@ -261,6 +411,31 @@ export function RelocationExplorer({
       ? applyScenarioToLocationResult(bestFitResult, lifestyle)
       : adjustedPrimaryResult;
 
+    const readiness =
+      reportAffordability && exportPeriodAnalysis
+        ? calculateCityRelocationReadiness(
+            reportAffordability.scenarioIncomeDisplay,
+            relocationProfile.savingsBalance,
+            reportAffordability.displayReferenceCost,
+            bestFitCity
+          )
+        : exportPeriodAnalysis
+          ? calculateCityRelocationReadiness(
+              convertIncome(exportPeriodAnalysis.total_income) *
+                (1 + incomeChangePct / 100),
+              relocationProfile.savingsBalance,
+              0,
+              bestFitCity
+            )
+          : {
+              runwayMonths: null,
+              runwayLabel: "",
+              moveReadinessPct: 0,
+              moveReadinessLabel: "",
+              incomeCoveragePct: 0,
+              incomeCoverageLabel: "",
+            };
+
     return {
       generatedAt: new Date().toLocaleString(),
       periodLabel: exportPeriodLabel,
@@ -272,11 +447,11 @@ export function RelocationExplorer({
       incomeChangePct,
       lifestyleLabel: lifestyleOption?.label ?? lifestyle,
       lifestyleDescription: lifestyleOption?.description ?? "",
-      timeline: profile.timeline,
+      timeline: relocationProfile.timeline,
       data,
       affordability: reportAffordability,
       readiness,
-      savingsBalance: profile.savingsBalance,
+      savingsBalance: relocationProfile.savingsBalance,
       citySummaries,
       recommendations: recommendations.map((entry) => ({
         city: entry.city,
@@ -291,10 +466,18 @@ export function RelocationExplorer({
         verdictLabel: entry.verdictLabel,
       })),
       primaryResult: reportPrimaryResult,
-      userBenchmarkSpending: getUserBenchmarkSpending(exportPeriodRows),
+      userBenchmarkSpending,
+      referenceCostNote: MONTHLY_BENCHMARK_NOTE,
+      dataSource: reportPrimaryResult?.metadata?.source,
+      dataSourceUpdated: reportPrimaryResult?.metadata?.updated,
+      dataLicense: reportPrimaryResult?.metadata?.license,
       formatDisplay,
       formatExpense,
       formatReferenceCost: formatUsd,
+      purchasingPowerEntries,
+      compositeEntries,
+      homeMonthlyCostDisplay,
+      financialHealthScore: scenarioHealthScore,
     };
   }, [
     locationPeriod,
@@ -309,7 +492,6 @@ export function RelocationExplorer({
     citySummaries,
     bestFitFromComparison,
     adjustedPrimaryResult,
-    topRecommendations,
     periodRows,
     scenario,
     selectedCities,
@@ -317,38 +499,58 @@ export function RelocationExplorer({
     formatDisplay,
     formatExpense,
     formatUsd,
+    convertIncome,
     settings.displayCurrency,
+    purchasingPowerEntries,
+    compositeEntries,
+    homeMonthlyCostDisplay,
+    relocationProfile,
+    scenarioHealthScore,
   ]);
 
-  function updateCityResults(next: LocationCompareResult[]) {
-    setCityResults(next);
-  }
-
   function handleBenchmarkChange(city: string, categoryKey: string, value: number) {
-    updateCityResults(
-      cityResults.map((result) => {
+    setCityResults((current) =>
+      current.map((result) => {
         if (result.reference_city !== city) return result;
         const nextBenchmarks = {
           ...result.reference_benchmarks,
           [categoryKey]: Number.isFinite(value) ? value : 0,
         };
-        return rebuildLocationResult(result, periodRows, nextBenchmarks, householdSize);
+        return rebuildLocationResult(result, spendingRows, nextBenchmarks, householdSize);
       })
     );
   }
 
   function handleResetCity(city: string) {
-    updateCityResults(
-      cityResults.map((result) => {
+    setCityResults((current) =>
+      current.map((result) => {
         if (result.reference_city !== city) return result;
         return rebuildLocationResult(
           result,
-          periodRows,
+          spendingRows,
           { ...result.original_benchmarks },
           householdSize
         );
       })
     );
+  }
+
+  function updateSavingsBalance(value: string) {
+    const parsed = value.trim() === "" ? null : Number(value);
+    setRelocationProfile((current) => ({
+      ...current,
+      savingsBalance: parsed !== null && Number.isFinite(parsed) ? Math.max(0, parsed) : null,
+    }));
+    setProfileSavedNotice("");
+  }
+
+  function updateRelocationTimeline(timeline: RelocationTimeline | "") {
+    setRelocationProfile((current) => ({
+      ...current,
+      timeline: timeline || null,
+    }));
+    setProfileSavedNotice("Profile saved for this session.");
+    window.setTimeout(() => setProfileSavedNotice(""), 4000);
   }
 
   async function runComparison() {
@@ -465,22 +667,12 @@ export function RelocationExplorer({
         householdSize={householdSize}
       />
 
-      {profileAnalysis && (
-        <RelocationProfilePanel
-          analysis={profileAnalysis}
-          periods={data.periods}
-          profilePeriod={profilePeriod}
-          onProfilePeriodChange={setProfilePeriod}
-          defaultCity={primaryCity}
-          householdSize={householdSize}
-        />
-      )}
-
       <section className="card">
         <h3>Can I afford to move?</h3>
         <p>
           Compare your monthly spending against Balkan, European, and North American reference
-          cities. Adjust category costs to match quotes you have received.
+          cities. Savings runway, move readiness, and composite scores use your selections below
+          and update for each compare city after you run a comparison.
         </p>
 
         <div className="form-grid">
@@ -608,7 +800,43 @@ export function RelocationExplorer({
           </label>
         </div>
 
-        <p className="insight location-callout">
+        <div className="profile-input-grid relocation-profile-inline">
+          <label>
+            Total savings (optional)
+            <input
+              type="number"
+              min={0}
+              step={100}
+              placeholder="e.g. 12000"
+              value={relocationProfile.savingsBalance ?? ""}
+              onChange={(event) => updateSavingsBalance(event.target.value)}
+            />
+          </label>
+          <label>
+            Relocation timeline
+            <select
+              value={relocationProfile.timeline ?? ""}
+              onChange={(event) =>
+                updateRelocationTimeline(event.target.value as RelocationTimeline | "")
+              }
+            >
+              <option value="">Not set</option>
+              {RELOCATION_TIMELINE_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="section-note relocation-profile-note">
+          Income for readiness metrics comes from <strong>{periodDisplayLabel}</strong>. Destination
+          cities are Compare city 1–3 above. Savings and what-if income feed composite scores and
+          side-by-side readiness — stored only in this browser session.
+        </p>
+        {profileSavedNotice && <div className="save-notice inline">{profileSavedNotice}</div>}
+
+        <p className="explanatory-callout location-callout">
           Exploring a move from <strong>{baseCity}</strong> during{" "}
           <strong>{periodDisplayLabel}</strong> with a{" "}
           <strong>{LIFESTYLE_OPTIONS.find((item) => item.id === lifestyle)?.label}</strong>{" "}
@@ -619,59 +847,50 @@ export function RelocationExplorer({
           {loading ? "Loading city data..." : "Compare selected cities"}
         </button>
         {compareNotice && <div className="save-notice inline visible">{compareNotice}</div>}
+
       </section>
 
-      {citySummaries.length > 0 && (
-        <CityCompareGrid
-          summaries={citySummaries}
-          formatAmount={formatDisplay}
-          displayCurrency={settings.displayCurrency}
-        />
-      )}
-
-      {selectedCities.length > 0 && (
-        <MultiCityCostComparison
-          baseCity={baseCity}
-          cities={selectedCities}
-          formatUsd={formatUsd}
-        />
-      )}
-
       {cityResults.length > 0 && (
-        <CategoryBenchmarkMatrix
-          cities={cityResults}
-          userSpending={spendingUserSpending}
-          periods={data.periods}
-          spendingPeriod={spendingPeriod}
-          onSpendingPeriodChange={setSpendingPeriod}
-          onBenchmarkChange={handleBenchmarkChange}
-          onResetCity={handleResetCity}
-        />
+        <>
+          <CategoryBenchmarkMatrix
+            cities={cityResults}
+            userSpending={displayUserSpending}
+            periods={data.periods}
+            spendingPeriod={spendingPeriod}
+            onSpendingPeriodChange={setSpendingPeriod}
+            onBenchmarkChange={handleBenchmarkChange}
+            onResetCity={handleResetCity}
+            rentIsEstimated={rentIsEstimated}
+            currentLocationLabel={baseCity.split(",")[0]}
+          />
+
+          {selectedCities.length > 0 && (
+            <MultiCityCostComparison
+              baseCity={baseCity}
+              cities={selectedCities}
+              formatUsd={formatUsd}
+            />
+          )}
+        </>
       )}
 
-      {verdictAffordability && verdictResult && (
-        <RelocationVerdict
-          affordability={verdictAffordability}
-          referenceCity={verdictResult.reference_city}
-          periodLabel={verdictResult.period_label}
-          formatBalance={formatDisplay}
-          financialHealthScore={data.health_score.overall}
-        />
-      )}
-
-      {periodAnalysis && (
-        <CityRecommender
-          rows={periodRows}
-          periodAnalysis={periodAnalysis}
-          periodLabel={locationPeriod}
-          householdSize={householdSize}
-          scenario={scenario}
-          baseCity={baseCity}
-          excludeCities={[baseCity]}
-          focusCities={selectedCities}
-          currencyContext={currencyContext}
-          onRecommendations={setTopRecommendations}
-        />
+      {citySummaries.length > 0 && (
+        <>
+          <PurchasingPowerIndexPanel homeCity={baseCity} entries={purchasingPowerEntries} />
+          <CompositeScoresPanel
+            entries={compositeEntries}
+            customBenchmarksActive={customBenchmarksActive}
+          />
+          <CityCompareGrid
+            summaries={citySummaries}
+            formatAmount={formatDisplay}
+            displayCurrency={settings.displayCurrency}
+            compositeEntries={compositeEntries}
+            savingsBalance={relocationProfile.savingsBalance}
+            scenarioIncomeDisplay={scenarioIncomeDisplay}
+            customBenchmarksActive={customBenchmarksActive}
+          />
+        </>
       )}
 
       <RelocationReportExport
@@ -687,84 +906,6 @@ export function RelocationExplorer({
         periods={data.periods}
         requirePeriodSelection
       />
-
-      {adjustedPrimaryResult && (
-        <section className="card">
-          <div className="location-meta">
-            <div>
-              <span>Your location</span>
-              <strong>{adjustedPrimaryResult.base_city ?? baseCity}</strong>
-            </div>
-            <div>
-              <span>Compare city 1</span>
-              <strong>{adjustedPrimaryResult.reference_city}</strong>
-            </div>
-            <div>
-              <span>Month compared</span>
-              <strong>{adjustedPrimaryResult.period_label}</strong>
-            </div>
-            <div>
-              <span>Scenario</span>
-              <strong>
-                {incomeChangePct >= 0 ? "+" : ""}
-                {incomeChangePct}% income · {lifestyle}
-              </strong>
-            </div>
-          </div>
-
-          <p className="insight methodology-note" style={{ marginTop: 16 }}>
-            <strong>How reference costs are calculated:</strong> {MONTHLY_BENCHMARK_NOTE}
-            <br />
-            <strong>Source:</strong> {adjustedPrimaryResult.metadata.source}
-            <br />
-            <strong>Updated:</strong> {adjustedPrimaryResult.metadata.updated}
-          </p>
-
-          {adjustedPrimaryResult.comparisons.length > 0 && (
-            <table>
-              <thead>
-                <tr>
-                  <th>Category</th>
-                  <th>Your spending</th>
-                  <th>Reference average</th>
-                  <th>Difference</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {adjustedPrimaryResult.comparisons.map((row) => {
-                  const savingsPct = referenceSavingsPct(row.user_amount, row.reference_amount);
-                  return (
-                  <tr key={row.category}>
-                    <td>{row.category}</td>
-                    <td>{formatExpense(row.user_amount)}</td>
-                    <td>{formatExpense(row.reference_amount)}</td>
-                    <td>
-                      {row.difference >= 0 ? "+" : ""}
-                      {formatExpense(row.difference)} ({savingsPct >= 0 ? "+" : ""}
-                      {savingsPct.toFixed(1)}% vs ref.)
-                    </td>
-                    <td>
-                      <span
-                        className={`status-pill ${
-                          row.status.includes("Above")
-                            ? "status-high"
-                            : row.status.includes("Below")
-                              ? "status-low"
-                              : "status-mid"
-                        }`}
-                      >
-                        {row.status}
-                      </span>
-                    </td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </section>
-      )}
     </div>
   );
 }

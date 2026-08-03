@@ -8,7 +8,7 @@ import {
   COST_ITEM_CATEGORIES,
   costDifferencePct,
   fetchCityCostProfiles,
-  sumCategoryItems,
+  sumCategoryItemsMonthly,
 } from "@/lib/city-cost-items";
 
 type Props = {
@@ -76,8 +76,8 @@ export function MultiCityCostComparison({ baseCity, cities, formatUsd }: Props) 
       <div className="section-heading">
         <h3>Typical costs across your chosen cities</h3>
         <p>
-          Restaurants, groceries, and transport &amp; utilities compared side-by-side for your
-          current city and each selected destination.
+          Restaurants, groceries, and transport &amp; utilities compared side-by-side —
+          estimated <strong>monthly</strong> spend from typical local price samples.
         </p>
         {sourceLabels.length > 0 && (
           <p className="section-note multi-city-source-note">
@@ -103,7 +103,7 @@ export function MultiCityCostComparison({ baseCity, cities, formatUsd }: Props) 
             </thead>
             <tbody>
               {COST_ITEM_CATEGORIES.map((category, categoryIndex) => {
-                const baseTotal = sumCategoryItems(baseProfile, category.keys);
+                const baseTotal = sumCategoryItemsMonthly(baseProfile, category.keys);
                 return (
                   <tr
                     key={category.label}
@@ -119,7 +119,7 @@ export function MultiCityCostComparison({ baseCity, cities, formatUsd }: Props) 
                     {loadedDestinations.map((city) => {
                       const profile = profiles[city];
                       if (!profile) return <td key={city}>—</td>;
-                      const total = sumCategoryItems(profile, category.keys);
+                      const total = sumCategoryItemsMonthly(profile, category.keys);
                       const diff = costDifferencePct(baseTotal, total);
                       const cheaper = diff < 0;
                       return (

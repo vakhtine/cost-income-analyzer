@@ -61,6 +61,9 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       if (!response.ok) throw new Error("Could not load exchange rates.");
       const data = (await response.json()) as ExchangeRates;
       setRates(data);
+      if (data.date === "fallback") {
+        setRatesError("");
+      }
     } catch (error) {
       setRatesError(error instanceof Error ? error.message : "Could not load exchange rates.");
     } finally {

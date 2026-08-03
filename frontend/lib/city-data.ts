@@ -184,6 +184,14 @@ export async function compareToLiveReference(
 
 export { MONTHLY_BENCHMARK_NOTE };
 
+export function hasCustomBenchmarks(results: LocationCompareResult[]) {
+  return results.some((result) =>
+    Object.keys(result.reference_benchmarks).some(
+      (key) => result.reference_benchmarks[key] !== result.original_benchmarks[key]
+    )
+  );
+}
+
 export async function compareMultipleCities(
   rows: Transaction[],
   cities: string[],
@@ -217,6 +225,17 @@ export async function fetchCityMonthlyCost(city: string, householdSize = 1) {
   const emptyRows: Transaction[] = [];
   const result = await compareToLiveReference(emptyRows, city, householdSize, "reference");
   return result.reference_monthly_total;
+}
+
+export async function fetchCityRentEstimate(
+  city: string,
+  householdSize: number,
+  lifestyleMultiplier: number
+) {
+  const emptyRows: Transaction[] = [];
+  const result = await compareToLiveReference(emptyRows, city, 1, "reference");
+  const baseRent = result.reference_benchmarks.rent ?? 0;
+  return round2(baseRent * householdSize * lifestyleMultiplier);
 }
 
 export const SUPPORTED_REFERENCE_CITIES = ALL_REFERENCE_CITIES;
