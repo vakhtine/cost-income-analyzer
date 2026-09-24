@@ -1,8 +1,9 @@
-import { compareMultipleCities } from "@/lib/city-data";
+import { compareMultipleCities, compareToLiveReference } from "@/lib/city-data";
 import { CityCostProfile, fetchCityCostProfiles } from "@/lib/city-cost-items";
 import { ALL_REFERENCE_CITIES } from "@/lib/constants";
 import { AffordabilityCurrencyContext } from "@/lib/relocation-affordability";
 import { buildCitySummaries, RelocationScenario } from "@/lib/relocation-scenario";
+import { healthScoreForPeriodSelection } from "@/lib/rebuild";
 import { PeriodAnalysis, Transaction } from "@/lib/types";
 
 export type CityRecommendation = {
@@ -60,7 +61,31 @@ export async function recommendCitiesForSpending(
     throw new Error("No cities available to rank. Select at least one destination city.");
   }
   const results = await compareMultipleCities(rows, cities, householdSize, periodLabel);
-  const summaries = buildCitySummaries(periodAnalysis, results, scenario, currency);
+  const homeCity = excludeCities[0];
+  const homeResult = homeCity
+    ? await compareToLiveReference(rows, homeCity, householdSize, periodLabel)
+    : undefined;
+  const healthContext = homeCity
+    ? {
+        baseHealthScore: healthScoreForPeriodSelection(
+          { [periodLabel]: rows },
+          periodLabel,
+          [periodLabel]
+        ),
+        expenseRows: rows,
+        focusPeriod: periodLabel,
+      }
+    : undefined;
+
+  const summaries = buildCitySummaries(
+    periodAnalysis,
+    results,
+    scenario,
+    currency,
+    homeCity,
+    homeResult,
+    healthContext
+  );
 
   const recommendations = summaries
     .map((entry) => ({

@@ -324,40 +324,50 @@ export function sumCategoryItemsMonthly(
   );
 }
 
-export async function fetchCityCostProfile(cityLabel: string): Promise<CityCostProfile> {
+function buildStaticCostProfile(cityLabel: string, liveUnavailable = false): CityCostProfile {
   const staticItems = STATIC_CITY_COST_ITEMS[cityLabel];
-  if (staticItems) {
-    return {
-      city: cityLabel,
-      items: staticItems,
-      metadata: {
-        source: "Illustrative cost-of-living reference (USD)",
-        updated: "2026",
-        dataSource: "Public cost-of-living surveys",
-        license: "Internal reference data",
-        localCurrency: "USD",
-      },
-    };
-  }
-
-  const cityKey = WHERENEXT_CITY_KEYS[cityLabel];
-  if (!cityKey) {
+  if (!staticItems) {
     throw new Error(`Typical costs are not available for ${cityLabel}.`);
   }
 
-  const payload = await fetchWhereNextCityPrices<WhereNextResponse>(cityKey);
-
   return {
     city: cityLabel,
-    items: extractCityCostItems(payload.data, payload.metadata.currency ?? null),
+    items: staticItems,
     metadata: {
-      source: payload.metadata.source,
-      updated: payload.metadata.updated,
-      dataSource: payload.metadata.data_source ?? payload.metadata.source,
-      license: payload.metadata.license,
-      localCurrency: payload.metadata.currency ?? null,
+      source: liveUnavailable
+        ? "Illustrative cost-of-living reference (live data unavailable)"
+        : "Illustrative cost-of-living reference (USD)",
+      updated: "2026",
+      dataSource: "Public cost-of-living surveys",
+      license: "Internal reference data",
+      localCurrency: "USD",
     },
   };
+}
+
+export async function fetchCityCostProfile(cityLabel: string): Promise<CityCostProfile> {
+  const cityKey = WHERENEXT_CITY_KEYS[cityLabel];
+  if (cityKey) {
+    try {
+      const payload = await fetchWhereNextCityPrices<WhereNextResponse>(cityKey);
+
+      return {
+        city: cityLabel,
+        items: extractCityCostItems(payload.data, payload.metadata.currency ?? null),
+        metadata: {
+          source: payload.metadata.source,
+          updated: payload.metadata.updated,
+          dataSource: payload.metadata.data_source ?? payload.metadata.source,
+          license: payload.metadata.license,
+          localCurrency: payload.metadata.currency ?? null,
+        },
+      };
+    } catch {
+      return buildStaticCostProfile(cityLabel, true);
+    }
+  }
+
+  return buildStaticCostProfile(cityLabel);
 }
 
 export async function fetchCityCostProfiles(cities: string[]) {

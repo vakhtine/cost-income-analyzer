@@ -10,6 +10,7 @@ export type CategoryIconId =
   | "wire-transfer"
   | "uncategorized"
   | "dining"
+  | "alcohol"
   | "transport"
   | "rent"
   | "utilities"
@@ -33,6 +34,7 @@ function normalizeCategory(category: string) {
 
 export function formatCategoryDisplayName(category: string): string {
   const key = normalizeCategory(category);
+  if (key === "gas") return "Gas & fuel";
   if (key.includes("telecommunication")) return "Telecom";
   return canonicalExpenseCategory(category);
 }
@@ -47,9 +49,15 @@ export function getCategoryMeta(category: string): CategoryMeta {
     return { iconId: "wire-transfer", tone: "cat-transfer", symbol: "↔" };
   }
   if (key.includes("discount") && key.includes("retail")) {
-    return { iconId: "discount-retail", tone: "cat-discount-retail", symbol: "%" };
+    return { iconId: "discount-retail", tone: "cat-discount-retail", symbol: "🏷️" };
   }
-  if (key === "gas" || (key.includes("gas") && !key.includes("transport"))) {
+  if (key.includes("general merchandise") || (key.includes("merchandise") && !key.includes("discount"))) {
+    return { iconId: "shopping", tone: "cat-shopping", symbol: "🛍️" };
+  }
+  if (key === "gas" || key.includes("gas & fuel") || (key.includes("gas") && !key.includes("transport"))) {
+    return { iconId: "gas-fuel", tone: "cat-gas-fuel", symbol: "⛽" };
+  }
+  if (key.includes("fuel") || key.includes("gas station") || key.includes("petrol")) {
     return { iconId: "gas-fuel", tone: "cat-gas-fuel", symbol: "⛽" };
   }
   if (
@@ -62,7 +70,7 @@ export function getCategoryMeta(category: string): CategoryMeta {
     return { iconId: "telecom", tone: "cat-telecom", symbol: "📋" };
   }
   if (key.includes("grocer") || key.includes("food market") || key.includes("supermarket") || key === "grocery") {
-    return { iconId: "grocery", tone: "cat-groceries", symbol: "🥑" };
+    return { iconId: "grocery", tone: "cat-groceries", symbol: "🛒" };
   }
   if (key.includes("mortgage")) {
     return { iconId: "rent", tone: "cat-rent", symbol: "🏠" };
@@ -70,8 +78,11 @@ export function getCategoryMeta(category: string): CategoryMeta {
   if (key.includes("insurance")) {
     return { iconId: "insurance", tone: "cat-insurance", symbol: "🛡" };
   }
+  if (key.includes("alcohol") || key === "bars") {
+    return { iconId: "alcohol", tone: "cat-alcohol", symbol: "🍸" };
+  }
   if (key.includes("shop") || key.includes("retail") || key.includes("clothing")) {
-    return { iconId: "shopping", tone: "cat-shopping", symbol: "🛍" };
+    return { iconId: "shopping", tone: "cat-shopping", symbol: "🛍️" };
   }
   if (
     key.includes("entertain") ||
@@ -88,7 +99,7 @@ export function getCategoryMeta(category: string): CategoryMeta {
     key.includes("cafe") ||
     key.includes("coffee")
   ) {
-    return { iconId: "dining", tone: "cat-dining", symbol: "🍽" };
+    return { iconId: "dining", tone: "cat-dining", symbol: "🍽️" };
   }
   if (
     key.includes("transport") ||
@@ -98,16 +109,13 @@ export function getCategoryMeta(category: string): CategoryMeta {
   ) {
     return { iconId: "transport", tone: "cat-transport", symbol: "🚌" };
   }
-  if (key.includes("fuel") || key.includes("gas station") || key.includes("petrol")) {
-    return { iconId: "gas-fuel", tone: "cat-gas-fuel", symbol: "⛽" };
-  }
-  if (key.includes("rent") || key.includes("housing") || key.includes("mortgage")) {
+  if (key.includes("rent") || key.includes("housing")) {
     return { iconId: "rent", tone: "cat-rent", symbol: "🏠" };
   }
   if (key.includes("utilit") || key.includes("electric")) {
     return { iconId: "utilities", tone: "cat-utilities", symbol: "⚡" };
   }
-  if (key.includes("health") || key.includes("medical") || key.includes("pharmacy") || key.includes("healthcare") || key.includes("medication")) {
+  if (key.includes("health") || key.includes("medical") || key.includes("pharmacy") || key.includes("healthcare") || key.includes("medication") || key.includes("health & pharmacy")) {
     return { iconId: "health", tone: "cat-health", symbol: "✚" };
   }
   if (key.includes("gym") || key.includes("fitness")) {
@@ -141,28 +149,6 @@ export function getCategoryMeta(category: string): CategoryMeta {
   return { iconId: "default", tone: "cat-default", symbol: "●" };
 }
 
-const PDF_SYMBOLS: Record<CategoryIconId, string> = {
-  grocery: "🥑",
-  "gas-fuel": "⛽",
-  telecom: "📱",
-  insurance: "🛡",
-  shopping: "🛍",
-  "discount-retail": "%",
-  "wire-transfer": "↔",
-  uncategorized: "◎",
-  dining: "🍽",
-  transport: "🚌",
-  rent: "🏠",
-  utilities: "⚡",
-  health: "✚",
-  entertainment: "▶",
-  travel: "✈",
-  education: "🎓",
-  income: "$",
-  default: "●",
-};
-
 export function getCategoryPdfSymbol(category: string): string {
-  const { iconId, symbol } = getCategoryMeta(category);
-  return PDF_SYMBOLS[iconId] ?? symbol;
+  return getCategoryMeta(category).symbol;
 }

@@ -4,7 +4,8 @@ import { CategoryIcon } from "@/components/CategoryIcon";
 import { PeriodSelect } from "@/components/PeriodSelect";
 import { IncomeEntryPrompt } from "@/components/IncomeEntryPrompt";
 import { formatCategoryDisplayName } from "@/lib/category-icons";
-import { canonicalExpenseCategory } from "@/lib/category-normalize";
+import { top5ExpenseCategories } from "@/lib/analyzer";
+import { isPersonToPersonCategory } from "@/lib/constants";
 import { UI_LABELS } from "@/lib/ui-labels";
 import { useCurrency } from "@/lib/currency-context";
 import { AnalyzeResponse, PeriodAnalysis } from "@/lib/types";
@@ -79,46 +80,68 @@ export function InsightsPanel({ analysis }: { analysis: PeriodAnalysis }) {
   );
 }
 
+type SimpleBarChartItem = {
+  name: string;
+  value: number;
+  percent?: number;
+};
+
 export function SimpleBarChart({
   data,
   colors,
   showCategoryIcons = false,
   showPercent = false,
+  barScale = "value",
   formatValue,
 }: {
-  data: { name: string; value: number }[];
+  data: SimpleBarChartItem[];
   colors: string[];
   showCategoryIcons?: boolean;
   showPercent?: boolean;
+  barScale?: "value" | "percent";
   formatValue: (value: number) => string;
 }) {
-  const max = Math.max(...data.map((item) => item.value), 1);
   const total = data.reduce((sum, item) => sum + item.value, 0) || 1;
+  const barValues = data.map((item) =>
+    barScale === "percent" ? (item.percent ?? 0) : item.value
+  );
+  const max = Math.max(...barValues, 1);
+
   return (
     <div className="simple-chart">
-      {data.map((item, index) => (
-        <div key={item.name} className="simple-chart-row">
-          <div className="simple-chart-label">
-            {showCategoryIcons && <CategoryIcon category={item.name} size={42} />}
-            <span className="simple-chart-label-text">{formatCategoryDisplayName(item.name)}</span>
+      {data.map((item, index) => {
+        const barValue = barValues[index] ?? 0;
+        const percentLabel =
+          item.percent !== undefined
+            ? item.percent
+            : (item.value / total) * 100;
+
+        return (
+          <div key={item.name} className="simple-chart-row">
+            <div className="simple-chart-label">
+              {showCategoryIcons && <CategoryIcon category={item.name} size={42} />}
+              <span className="simple-chart-label-text">
+                {formatCategoryDisplayName(item.name)}
+              </span>
+            </div>
+            <div className="simple-chart-track">
+              <div
+                className="simple-chart-bar"
+                style={{
+                  width: `${(barValue / max) * 100}%`,
+                  background: colors[index % colors.length],
+                }}
+              />
+            </div>
+            <div className="simple-chart-value">
+              <span>{formatValue(item.value)}</span>
+              {showPercent ? (
+                <span className="simple-chart-pct">{percentLabel.toFixed(1)}%</span>
+              ) : null}
+            </div>
           </div>
-          <div className="simple-chart-track">
-            <div
-              className="simple-chart-bar"
-              style={{
-                width: `${(item.value / max) * 100}%`,
-                background: colors[index % colors.length],
-              }}
-            />
-          </div>
-          <div className="simple-chart-value">
-            <span>{formatValue(item.value)}</span>
-            {showPercent ? (
-              <span className="simple-chart-pct">{((item.value / total) * 100).toFixed(1)}%</span>
-            ) : null}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -141,14 +164,23 @@ export function CategoryChartsPanel({
     name: item.category,
     value: item.total,
   }));
-  const expenseData = analysis.expense_categories.map((item) => ({
+  const expenseData = analysis.expense_categories
+    .filter((item) => !isPersonToPersonCategory(item.category))
+    .map((item) => ({
     name: item.category,
     value: item.total,
   }));
 
-  const expenseBarData = expenseData.slice(0, 5).map((item) => ({
-    name: canonicalExpenseCategory(item.name),
-    value: item.value,
+  const top5Categories = top5ExpenseCategories(analysis);
+  const expenseBarData = top5Categories.map((item) => ({
+    name: item.category,
+    value: item.total,
+    percent: item.pct_of_all_expenses,
+  }));
+  const incomePctBarData = top5Categories.map((item) => ({
+    name: item.category,
+    value: item.total,
+    percent: item.pct_of_income_top5,
   }));
 
   return (
@@ -175,17 +207,35 @@ export function CategoryChartsPanel({
         )}
       </div>
       <div className="card chart-card-compact expense-bar-card">
-        <h3>{UI_LABELS.expensesByCategory}</h3>
         {expenseData.length === 0 ? (
-          <p className="insight">No expenses recorded for this period.</p>
+          <>
+            <h3>{UI_LABELS.expensesByCategory}</h3>
+            <p className="insight">No expenses recorded for this period.</p>
+          </>
         ) : (
-          <SimpleBarChart
-            data={expenseBarData.length ? expenseBarData : expenseData}
-            colors={["#1a6b7c", "#2d9cdb", "#7eb8c9", "#c9a227", "#2d6a4f"]}
-            showCategoryIcons
-            showPercent
-            formatValue={formatExpense}
-          />
+          <div className="expense-charts-duo">
+            <div className="expense-chart-panel">
+              <h3>{UI_LABELS.expensesByCategory}</h3>
+              <SimpleBarChart
+                data={expenseBarData.length ? expenseBarData : expenseData}
+                colors={["#1a6b7c", "#2d9cdb", "#7eb8c9", "#c9a227", "#2d6a4f"]}
+                showCategoryIcons
+                showPercent
+                formatValue={formatExpense}
+              />
+            </div>
+            <div className="expense-chart-panel">
+              <h3>{UI_LABELS.top5ExpensesPctOfIncome}</h3>
+              <SimpleBarChart
+                data={incomePctBarData.length ? incomePctBarData : expenseData}
+                colors={["#1a6b7c", "#2d9cdb", "#7eb8c9", "#c9a227", "#2d6a4f"]}
+                showCategoryIcons
+                showPercent
+                barScale="percent"
+                formatValue={formatExpense}
+              />
+            </div>
+          </div>
         )}
       </div>
     </section>

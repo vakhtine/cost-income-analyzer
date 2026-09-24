@@ -38,6 +38,36 @@ export const SUPPORTED_CURRENCIES: { code: CurrencyCode; label: string; symbol: 
 
 export const DEFAULT_CURRENCY: CurrencyCode = "USD";
 
+export const FALLBACK_EXCHANGE_RATES: ExchangeRates = {
+  base: "EUR",
+  date: "fallback",
+  rates: {
+    USD: 1.08,
+    GBP: 0.85,
+    ALL: 92,
+    RSD: 117,
+    BAM: 1.96,
+    MKD: 61.5,
+    CHF: 0.96,
+    CAD: 1.47,
+    AUD: 1.65,
+    BGN: 1.96,
+    RON: 4.97,
+    TRY: 35,
+  },
+};
+
+export function mergeExchangeRates(partial: Partial<ExchangeRates> & { rates?: Record<string, number> }): ExchangeRates {
+  return {
+    base: partial.base ?? FALLBACK_EXCHANGE_RATES.base,
+    date: partial.date ?? FALLBACK_EXCHANGE_RATES.date,
+    rates: {
+      ...FALLBACK_EXCHANGE_RATES.rates,
+      ...(partial.rates ?? {}),
+    },
+  };
+}
+
 export function currencyLabel(code: CurrencyCode) {
   return SUPPORTED_CURRENCIES.find((item) => item.code === code)?.label ?? code;
 }
@@ -52,7 +82,11 @@ export function formatMoney(value: number, currency: CurrencyCode = DEFAULT_CURR
 
 function rateFor(code: CurrencyCode, rates: ExchangeRates): number {
   if (code === rates.base) return 1;
-  return rates.rates[code] ?? 1;
+  const rate = rates.rates[code];
+  if (typeof rate === "number" && rate > 0) return rate;
+  const fallback = FALLBACK_EXCHANGE_RATES.rates[code];
+  if (typeof fallback === "number" && fallback > 0) return fallback;
+  return 1;
 }
 
 export function convertAmount(

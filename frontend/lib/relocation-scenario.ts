@@ -4,12 +4,18 @@ import {
   computeRelocationAffordability,
   RelocationAffordability,
 } from "@/lib/relocation-affordability";
-import { LocationCompareResult, PeriodAnalysis } from "@/lib/types";
-import { round2 } from "@/lib/utils";
+import { HealthScore, LocationCompareResult, PeriodAnalysis, Transaction } from "@/lib/types";
+import { comparisonGapPct, round2 } from "@/lib/utils";
 
 export type RelocationScenario = {
   incomeChangePct: number;
   lifestyle: LifestyleLevel;
+};
+
+export type RelocationHealthContext = {
+  baseHealthScore: HealthScore;
+  expenseRows: Transaction[];
+  focusPeriod?: string;
 };
 
 function adjustComparisonStatus(userAmount: number, referenceAmount: number) {
@@ -33,9 +39,7 @@ export function applyScenarioToLocationResult(
     comparisons: locationResult.comparisons.map((row) => {
       const reference_amount = round2(row.reference_amount * multiplier);
       const difference = round2(row.user_amount - reference_amount);
-      const difference_pct = reference_amount
-        ? round2((difference / reference_amount) * 100)
-        : 0;
+      const difference_pct = comparisonGapPct(row.user_amount, reference_amount);
       return {
         ...row,
         reference_amount,
@@ -75,13 +79,27 @@ export function computeScenarioAffordability(
   periodAnalysis: PeriodAnalysis,
   locationResult: LocationCompareResult,
   scenario: RelocationScenario,
-  currency?: AffordabilityCurrencyContext
+  currency?: AffordabilityCurrencyContext,
+  periodLabel?: string,
+  homeLocationResult?: LocationCompareResult,
+  healthContext?: RelocationHealthContext
 ): RelocationAffordability {
   return computeRelocationAffordability(
     periodAnalysis,
     locationResult,
     currency,
-    scenario
+    scenario,
+    {
+      ...(periodLabel ? { periodLabel } : {}),
+      ...(homeLocationResult ? { homeLocationResult } : {}),
+      ...(healthContext
+        ? {
+            baseHealthScore: healthContext.baseHealthScore,
+            expenseRows: healthContext.expenseRows,
+            focusPeriod: healthContext.focusPeriod,
+          }
+        : {}),
+    }
   );
 }
 
@@ -95,16 +113,36 @@ export function buildCitySummaries(
   periodAnalysis: PeriodAnalysis,
   results: LocationCompareResult[],
   scenario: RelocationScenario,
-  currency?: AffordabilityCurrencyContext
+  currency?: AffordabilityCurrencyContext,
+  homeCity?: string,
+  homeLocationResult?: LocationCompareResult,
+  healthContext?: RelocationHealthContext
 ): CityAffordabilitySummary[] {
-  return results.map((result) => ({
-    city: result.reference_city,
-    result,
-    affordability: computeScenarioAffordability(
-      periodAnalysis,
+  const normalizedHome = homeCity?.trim().toLowerCase();
+  const homeResult =
+    homeLocationResult ??
+    (normalizedHome
+      ? results.find(
+          (result) => result.reference_city.trim().toLowerCase() === normalizedHome
+        )
+      : undefined);
+
+  return results.map((result) => {
+    const isHome =
+      normalizedHome &&
+      result.reference_city.trim().toLowerCase() === normalizedHome;
+    return {
+      city: result.reference_city,
       result,
-      scenario,
-      currency
-    ),
-  }));
+      affordability: computeScenarioAffordability(
+        periodAnalysis,
+        result,
+        scenario,
+        currency,
+        result.period_label,
+        isHome ? undefined : homeResult,
+        healthContext
+      ),
+    };
+  });
 }

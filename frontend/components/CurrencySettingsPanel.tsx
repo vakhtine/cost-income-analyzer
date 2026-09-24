@@ -21,7 +21,7 @@ export function CurrencySettingsPanel() {
         <h3>Currency settings</h3>
         <p>
           Set the currency your income and expenses are recorded in, then choose a display
-          currency for converted totals. Rates update from live ECB data
+          currency for converted totals. Rates update from live exchange data
           {ratesDate && ratesDate !== "fallback" ? ` (${ratesDate})` : ""}.
         </p>
       </div>

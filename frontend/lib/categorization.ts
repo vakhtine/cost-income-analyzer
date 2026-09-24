@@ -2,6 +2,7 @@ import {
   DEFAULT_EXPENSE_CATEGORIES,
   EXPENSE_CATEGORY_OPTIONS,
   RawRow,
+  resolveSanitizedTransaction,
   resolveTransactionType,
   TRANSFER_CATEGORY_LABEL,
 } from "@/lib/constants";
@@ -27,10 +28,17 @@ export function isUnknownCategory(category: string) {
   return key === "unknown" || key === "uncategorized" || key.includes("uncategor");
 }
 
+function isSelectableExpenseCategory(category: string) {
+  return (
+    !isUnknownCategory(category) &&
+    resolveSanitizedTransaction(category).transaction_type === "expense"
+  );
+}
+
 export function getKnownExpenseCategories(rows: Transaction[]) {
   const categories = new Set<string>();
   for (const row of filterExpenseTransactions(rows)) {
-    if (row.transaction_type === "expense" && !isUnknownCategory(row.category)) {
+    if (row.transaction_type === "expense" && isSelectableExpenseCategory(row.category)) {
       categories.add(canonicalExpenseCategory(row.category));
     }
   }
@@ -44,7 +52,7 @@ export function getAllUsedCategories(rows: Transaction[]) {
   categories.add(TRANSFER_CATEGORY_LABEL);
   for (const row of rows) {
     const category = row.category.trim();
-    if (category && !isUnknownCategory(category)) {
+    if (category && isSelectableExpenseCategory(category)) {
       categories.add(canonicalExpenseCategory(category));
     }
   }
@@ -56,11 +64,15 @@ export function getExpenseCategoryOptions(rows: Transaction[]) {
     EXPENSE_CATEGORY_OPTIONS.map((category) => canonicalExpenseCategory(category))
   );
   for (const row of filterExpenseTransactions(rows)) {
-    if (!isUnknownCategory(row.category)) {
+    if (isSelectableExpenseCategory(row.category)) {
       options.add(canonicalExpenseCategory(row.category));
     }
   }
-  return [...options].sort((a, b) => a.localeCompare(b));
+  return [...options]
+    .filter(
+      (category) => resolveSanitizedTransaction(category).transaction_type === "expense"
+    )
+    .sort((a, b) => a.localeCompare(b));
 }
 
 export function getMerchantCategoryOptions(rows: Transaction[]) {
@@ -108,12 +120,13 @@ export function applyUnknownAssignments(
       isUnknownCategory(row.category) &&
       assignments[row.merchant_name]
     ) {
-      const category = canonicalExpenseCategory(assignments[row.merchant_name]);
-      const transaction_type = resolveTransactionType(category);
+      const sanitized = resolveSanitizedTransaction(
+        canonicalExpenseCategory(assignments[row.merchant_name])
+      );
       return {
         ...row,
-        category,
-        transaction_type,
+        category: sanitized.category,
+        transaction_type: sanitized.transaction_type,
       };
     }
     return row;
@@ -135,11 +148,11 @@ export function applyFlagFixes(
             item.merchant_name.toLowerCase() === row.merchant_name.toLowerCase()
         );
       if (!fix) return row;
-      const transaction_type = resolveTransactionType(fix.category);
+      const sanitized = resolveSanitizedTransaction(fix.category);
       return {
         ...row,
-        category: fix.category,
-        transaction_type,
+        category: sanitized.category,
+        transaction_type: sanitized.transaction_type,
       };
     });
   }

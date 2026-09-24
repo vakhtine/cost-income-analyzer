@@ -34,7 +34,11 @@ export function CategoryChangeCard({ change }: Props) {
           </div>
         </div>
         <div className={`change-badge ${isIncrease ? "up" : "down"}`}>
-          {isIncrease ? "▲" : "▼"} {Math.abs(change.change_pct).toFixed(1)}%
+          {change.change_pct === null
+            ? change.previous_total === 0 && change.current_total > 0
+              ? "New"
+              : "N/A"
+            : `${isIncrease ? "▲" : "▼"} ${Math.abs(change.change_pct).toFixed(1)}%`}
         </div>
       </div>
 

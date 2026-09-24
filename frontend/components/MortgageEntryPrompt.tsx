@@ -132,7 +132,7 @@ export function MortgageEntryPrompt({
             />
           </label>
           <label>
-            Expenses category
+            Expense category
             <input type="text" value={MORTGAGE_CATEGORY} readOnly />
           </label>
           <label>

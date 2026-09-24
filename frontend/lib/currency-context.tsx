@@ -8,6 +8,7 @@ import {
   CurrencySettings,
   DEFAULT_CURRENCY_SETTINGS,
   ExchangeRates,
+  FALLBACK_EXCHANGE_RATES,
   formatMoney,
   loadCurrencySettings,
   saveCurrencySettings,
@@ -83,27 +84,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const fallbackRates = useMemo<ExchangeRates>(
-    () => ({
-      base: "EUR",
-      date: "fallback",
-      rates: {
-        USD: 1.08,
-        GBP: 0.85,
-        ALL: 103,
-        RSD: 117,
-        BAM: 1.96,
-        MKD: 61.5,
-        CHF: 0.96,
-        CAD: 1.47,
-        AUD: 1.65,
-        BGN: 1.96,
-        RON: 4.97,
-        TRY: 35,
-      },
-    }),
-    []
-  );
+  const fallbackRates = useMemo<ExchangeRates>(() => FALLBACK_EXCHANGE_RATES, []);
 
   const activeRates = rates ?? fallbackRates;
 

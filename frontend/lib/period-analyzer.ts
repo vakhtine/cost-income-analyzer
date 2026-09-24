@@ -114,7 +114,10 @@ function buildCategoryChanges(previousRows: Transaction[], currentRows: Transact
       previous_total: round2(previous_total),
       current_total: round2(current_total),
       change_amount,
-      change_pct: round2(pctChange(previous_total, current_total)),
+      change_pct: (() => {
+        const value = pctChange(previous_total, current_total);
+        return value === null ? null : round2(value);
+      })(),
       top_drivers: categoryChangeDrivers(
         previousRows,
         currentRows,
@@ -140,9 +143,15 @@ export function comparePeriods(
     previous_period: previousName,
     current_period: currentName,
     income_change: round2(current.total_income - previous.total_income),
-    income_change_pct: round2(pctChange(previous.total_income, current.total_income)),
+    income_change_pct: (() => {
+      const value = pctChange(previous.total_income, current.total_income);
+      return value === null ? null : round2(value);
+    })(),
     expense_change: round2(current.total_expenses - previous.total_expenses),
-    expense_change_pct: round2(pctChange(previous.total_expenses, current.total_expenses)),
+    expense_change_pct: (() => {
+      const value = pctChange(previous.total_expenses, current.total_expenses);
+      return value === null ? null : round2(value);
+    })(),
     category_changes: buildCategoryChanges(previousRows, currentRows),
   };
 }
@@ -169,7 +178,13 @@ export function buildConsecutivePeriodPairs(periods: string[]): ConsecutivePerio
 
 export function explainCategoryChange(change: CategoryChange) {
   const direction = change.change_amount > 0 ? "increased" : "decreased";
-  let text = `${change.category} (${change.transaction_type}) ${direction} by $${Math.abs(change.change_amount).toFixed(2)} (${change.change_pct >= 0 ? "+" : ""}${change.change_pct.toFixed(1)}%) from $${change.previous_total.toFixed(2)} to $${change.current_total.toFixed(2)}.`;
+  const pctText =
+    change.change_pct === null
+      ? change.previous_total === 0 && change.current_total > 0
+        ? "new category"
+        : "N/A"
+      : `${change.change_pct >= 0 ? "+" : ""}${change.change_pct.toFixed(1)}%`;
+  let text = `${change.category} (${change.transaction_type}) ${direction} by $${Math.abs(change.change_amount).toFixed(2)} (${pctText}) from $${change.previous_total.toFixed(2)} to $${change.current_total.toFixed(2)}.`;
 
   if (change.top_drivers.length) {
     const bits = change.top_drivers.slice(0, 3).map(

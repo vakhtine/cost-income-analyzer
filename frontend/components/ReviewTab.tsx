@@ -380,7 +380,7 @@ export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEdito
     if (!pending.length) {
       showStatus({
         kind: "info",
-        message: "Select an expenses category for at least one merchant before applying.",
+        message: "Select an expense category for at least one merchant before applying.",
       });
       return;
     }
@@ -588,7 +588,7 @@ export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEdito
         )}
 
         <p className="transfer-category-note">
-          Use <strong>{TRANSFER_CATEGORY_LABEL}</strong> for money moved between your own accounts
+          Use &quot;Transfer&quot; classification for money moved between your own accounts
           (for example, paying a credit card from checking). Transfers are{" "}
           <strong>not counted as income or expenses</strong> — the real spending is already captured
           on the card or account you paid.
@@ -596,7 +596,7 @@ export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEdito
 
         <div className="unknown-merchant-alert">
           <p>
-            Assign unknown merchants to an expenses category from the list below, or choose Transfer.
+            Assign unknown merchants to an expense category from the list below, or choose Transfer.
           </p>
 
           {periodsWithUnknowns.length > 0 ? (
@@ -634,7 +634,7 @@ export function ReviewTab({ data, onUpdate, showUnknownSection = true, showEdito
                     }))
                   }
                 >
-                  <option value="">Select expenses category…</option>
+                  <option value="">Select expense category…</option>
                   {expenseCategoryOptions.map((category) => (
                     <option key={category} value={category}>
                       {category}

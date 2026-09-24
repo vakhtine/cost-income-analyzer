@@ -2,6 +2,7 @@ import { isTransferCategory, INCOME_CATEGORIES, MERCHANT_CATEGORY_HINTS } from "
 import { calculateHealthScore } from "@/lib/health-score";
 import { comparePeriods, explainCategoryChange } from "@/lib/period-analyzer";
 import { CategorizationFlag, PeriodComparison, Transaction } from "@/lib/types";
+import { formatPctChangeLabel } from "@/lib/utils";
 
 function merchantMatchesHint(merchantLower: string, keyword: string) {
   const normalizedKeyword = keyword.trim().toLowerCase();
@@ -92,10 +93,10 @@ export function buildPeriodAdvice(
   }
 
   advice.push(
-    `Income changed by $${comparison.income_change.toFixed(2)} (${comparison.income_change_pct >= 0 ? "+" : ""}${comparison.income_change_pct.toFixed(1)}%) between ${comparison.previous_period} and ${comparison.current_period}.`
+    `Income changed by $${comparison.income_change.toFixed(2)} (${formatPctChangeLabel(comparison.income_change_pct)}) between ${comparison.previous_period} and ${comparison.current_period}.`
   );
   advice.push(
-    `Expenses changed by $${comparison.expense_change.toFixed(2)} (${comparison.expense_change_pct >= 0 ? "+" : ""}${comparison.expense_change_pct.toFixed(1)}%) over the same period.`
+    `Expenses changed by $${comparison.expense_change.toFixed(2)} (${formatPctChangeLabel(comparison.expense_change_pct)}) over the same period.`
   );
   for (const change of comparison.category_changes.slice(0, 8)) {
     advice.push(explainCategoryChange(change));

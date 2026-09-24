@@ -210,7 +210,7 @@ export function detectAnomalies(
         period: targetPeriod,
         transaction_count: group.count,
         multiplier,
-        description: `${multiplier}× the prior month (${priorPeriod}) total for this expenses category`,
+        description: `${multiplier}× the prior month (${priorPeriod}) total for this expense category`,
       });
     }
   }
@@ -225,8 +225,8 @@ export type CategoryTrend = {
   category: string;
   current_total: number;
   prior_total: number;
-  change_pct: number;
-  trend: "Spike" | "Up" | "Down" | "Stable";
+  change_pct: number | null;
+  trend: "Spike" | "Up" | "Down" | "Stable" | "New";
 };
 
 export function computeCategoryTrends(
@@ -263,23 +263,28 @@ export function computeCategoryTrends(
     const prior_total = round2(priorTotals.get(category) ?? 0);
     if (current_total === 0 && prior_total === 0) continue;
 
-    let change_pct = 0;
+    let change_pct: number | null = null;
     if (prior_total > 0) {
       change_pct = round2(((current_total - prior_total) / prior_total) * 100);
     } else if (current_total > 0) {
-      change_pct = 100;
+      change_pct = null;
     }
 
     let trend: CategoryTrend["trend"] = "Stable";
-    if (Math.abs(change_pct) < 5) trend = "Stable";
-    else if (change_pct >= 100) trend = "Spike";
-    else if (change_pct > 0) trend = "Up";
-    else trend = "Down";
+    if (prior_total === 0 && current_total > 0) trend = "New";
+    else if (change_pct !== null && Math.abs(change_pct) < 5) trend = "Stable";
+    else if (change_pct !== null && change_pct >= 100) trend = "Spike";
+    else if (change_pct !== null && change_pct > 0) trend = "Up";
+    else if (change_pct !== null) trend = "Down";
 
     trends.push({ category, current_total, prior_total, change_pct, trend });
   }
 
-  return trends.sort((a, b) => Math.abs(b.change_pct) - Math.abs(a.change_pct));
+  return trends.sort((a, b) => {
+    const aMag = a.change_pct === null ? Math.abs(a.current_total) : Math.abs(a.change_pct);
+    const bMag = b.change_pct === null ? Math.abs(b.current_total) : Math.abs(b.change_pct);
+    return bMag - aMag;
+  });
 }
 
 export type DailySpendPoint = {

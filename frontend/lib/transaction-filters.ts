@@ -1,5 +1,5 @@
 import { canonicalCategoryName } from "@/lib/category-normalize";
-import { isTransferCategory, resolveTransactionType } from "@/lib/constants";
+import { isTransferCategory, resolveSanitizedTransaction } from "@/lib/constants";
 import { Transaction } from "@/lib/types";
 
 export function isTransferTransaction(row: Transaction): boolean {
@@ -17,12 +17,12 @@ export function isIncomeTransaction(row: Transaction): boolean {
 }
 
 export function normalizeTransaction(row: Transaction): Transaction {
-  const transaction_type = resolveTransactionType(row.category);
-  const category = canonicalCategoryName(row.category, transaction_type);
+  const sanitized = resolveSanitizedTransaction(row.category);
+  const category = canonicalCategoryName(sanitized.category, sanitized.transaction_type);
   return {
     ...row,
     category,
-    transaction_type,
+    transaction_type: sanitized.transaction_type,
     abs_amount: Math.abs(row.amount),
   };
 }

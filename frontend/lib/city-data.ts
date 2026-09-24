@@ -1,5 +1,9 @@
 import { buildMonthlyBenchmarks, MONTHLY_BENCHMARK_NOTE } from "@/lib/benchmark-calculator";
 import {
+  benchmarkCategoryLabel,
+  benchmarkKeyFromComparisonLabel,
+} from "@/lib/benchmark-categories";
+import {
   ALL_REFERENCE_CITIES,
   CATEGORY_ALIASES,
   WHERENEXT_CITY_KEYS,
@@ -10,7 +14,7 @@ import {
 } from "@/lib/static-city-benchmarks";
 import { LocationCompareResult, LocationComparison, Transaction } from "@/lib/types";
 import { filterExpenseTransactions } from "@/lib/transaction-filters";
-import { round2 } from "@/lib/utils";
+import { comparisonGapPct, pctChange, round2 } from "@/lib/utils";
 import { fetchWhereNextCityPrices } from "@/lib/wherenext-api";
 
 type WhereNextItem = {
@@ -65,22 +69,67 @@ export function buildComparisons(
     if (!referenceAmount) continue;
     const userAmount = userTotals[category] ?? 0;
     const difference = userAmount - referenceAmount;
-    const difference_pct = (difference / referenceAmount) * 100;
+    const difference_pct = comparisonGapPct(userAmount, referenceAmount);
     let status = "Near reference average";
-    if (difference_pct > 15) status = "Above reference average";
-    if (difference_pct < -15) status = "Below reference average";
+    if (difference_pct !== null) {
+      if (difference_pct > 15) status = "Above reference average";
+      if (difference_pct < -15) status = "Below reference average";
+    } else if (userAmount === 0) {
+      status = "No user spending in this category";
+    }
     comparisons.push({
-      category: category[0].toUpperCase() + category.slice(1),
+      category: benchmarkCategoryLabel(category),
       user_amount: round2(userAmount),
       reference_amount: round2(referenceAmount),
       difference: round2(difference),
-      difference_pct: round2(difference_pct),
+      difference_pct,
       status,
     });
   }
 
-  comparisons.sort((a, b) => Math.abs(b.difference_pct) - Math.abs(a.difference_pct));
+  comparisons.sort((a, b) => {
+    const aGap = a.difference_pct === null ? 0 : Math.abs(a.difference_pct);
+    const bGap = b.difference_pct === null ? 0 : Math.abs(b.difference_pct);
+    return bGap - aGap;
+  });
   return comparisons;
+}
+
+/** Recompute category gaps using matrix-style user spending (includes estimated rent). */
+export function rebuildCategoryGapsFromUserSpending(
+  comparisons: LocationComparison[],
+  userSpending: Record<string, number>
+): LocationComparison[] {
+  const rebuilt: LocationComparison[] = [];
+
+  for (const row of comparisons) {
+    const key = benchmarkKeyFromComparisonLabel(row.category);
+    const userAmount = round2(key ? (userSpending[key] ?? 0) : row.user_amount);
+    const referenceAmount = row.reference_amount;
+    if (referenceAmount <= 0) continue;
+
+    const difference = round2(userAmount - referenceAmount);
+    const difference_pct = round2(
+      ((userAmount - referenceAmount) / referenceAmount) * 100
+    );
+    let status = "Near reference average";
+    if (difference_pct > 15) status = "Above reference average";
+    else if (difference_pct < -15) status = "Below reference average";
+    else if (userAmount === 0) status = "No user spending in this category";
+
+    rebuilt.push({
+      ...row,
+      user_amount: userAmount,
+      difference,
+      difference_pct,
+      status,
+    });
+  }
+
+  rebuilt.sort(
+    (a, b) => Math.abs(b.difference_pct ?? 0) - Math.abs(a.difference_pct ?? 0)
+  );
+  return rebuilt;
 }
 
 export function referenceSavingsPct(userAmount: number, referenceAmount: number) {
@@ -137,48 +186,76 @@ export async function fetchLiveCityList() {
   return payload.data.map((city) => `${city.city_name}`);
 }
 
-export async function compareToLiveReference(
+function buildStaticReferenceResult(
   rows: Transaction[],
   referenceCityLabel: string,
   householdSize: number,
-  periodLabel: string
-): Promise<LocationCompareResult> {
+  periodLabel: string,
+  liveUnavailable = false
+): LocationCompareResult {
   const staticBenchmarks = STATIC_CITY_BENCHMARKS[referenceCityLabel];
-  if (staticBenchmarks) {
-    return buildResult(
-      periodLabel,
-      referenceCityLabel,
-      householdSize,
-      rows,
-      staticBenchmarks,
-      {
-        city: referenceCityLabel,
-        ...STATIC_BENCHMARK_META,
-      }
-    );
-  }
-
-  const cityKey = WHERENEXT_CITY_KEYS[referenceCityLabel];
-  if (!cityKey) {
+  if (!staticBenchmarks) {
     throw new Error(`Benchmark data is not available for ${referenceCityLabel}.`);
   }
-
-  const payload = await fetchWhereNextCityPrices<WhereNextResponse>(cityKey);
-  const benchmarks = buildMonthlyBenchmarks(payload.data);
 
   return buildResult(
     periodLabel,
     referenceCityLabel,
     householdSize,
     rows,
-    benchmarks,
+    staticBenchmarks,
     {
       city: referenceCityLabel,
-      source: payload.metadata.data_source ?? payload.metadata.source,
-      updated: payload.metadata.updated,
-      license: payload.metadata.license,
-      citation: `WhereNext City Price Dataset (${payload.metadata.updated}) — ${payload.metadata.license}. ${MONTHLY_BENCHMARK_NOTE}`,
+      ...STATIC_BENCHMARK_META,
+      source: liveUnavailable
+        ? `${STATIC_BENCHMARK_META.source} (live data unavailable)`
+        : STATIC_BENCHMARK_META.source,
     }
+  );
+}
+
+export async function compareToLiveReference(
+  rows: Transaction[],
+  referenceCityLabel: string,
+  householdSize: number,
+  periodLabel: string
+): Promise<LocationCompareResult> {
+  const cityKey = WHERENEXT_CITY_KEYS[referenceCityLabel];
+  if (cityKey) {
+    try {
+      const payload = await fetchWhereNextCityPrices<WhereNextResponse>(cityKey);
+      const benchmarks = buildMonthlyBenchmarks(payload.data);
+
+      return buildResult(
+        periodLabel,
+        referenceCityLabel,
+        householdSize,
+        rows,
+        benchmarks,
+        {
+          city: referenceCityLabel,
+          source: payload.metadata.data_source ?? payload.metadata.source,
+          updated: payload.metadata.updated,
+          license: payload.metadata.license,
+          citation: `WhereNext City Price Dataset (${payload.metadata.updated}) — ${payload.metadata.license}. ${MONTHLY_BENCHMARK_NOTE}`,
+        }
+      );
+    } catch {
+      return buildStaticReferenceResult(
+        rows,
+        referenceCityLabel,
+        householdSize,
+        periodLabel,
+        true
+      );
+    }
+  }
+
+  return buildStaticReferenceResult(
+    rows,
+    referenceCityLabel,
+    householdSize,
+    periodLabel
   );
 }
 
@@ -192,22 +269,83 @@ export function hasCustomBenchmarks(results: LocationCompareResult[]) {
   );
 }
 
+export function buildMatrixCityOrder(baseCity: string, compareCities: string[]) {
+  const ordered: string[] = [];
+  const seen = new Set<string>();
+  const push = (city: string) => {
+    const key = city.trim().toLowerCase();
+    if (!city || seen.has(key)) return;
+    seen.add(key);
+    ordered.push(city);
+  };
+  push(baseCity);
+  for (const city of compareCities) push(city);
+  return ordered;
+}
+
+export type MatrixCityColumn = {
+  city: string;
+  result: LocationCompareResult | null;
+};
+
+export function orderCityCompareResults(
+  cityOrder: string[],
+  results: LocationCompareResult[]
+): LocationCompareResult[] {
+  return resolveMatrixCityColumns(cityOrder, results)
+    .map((column) => column.result)
+    .filter((result): result is LocationCompareResult => Boolean(result));
+}
+
+export function resolveMatrixCityColumns(
+  cityOrder: string[],
+  results: LocationCompareResult[]
+): MatrixCityColumn[] {
+  return cityOrder.map((city) => ({
+    city,
+    result:
+      results.find(
+        (result) =>
+          result.reference_city.trim().toLowerCase() === city.trim().toLowerCase()
+      ) ?? null,
+  }));
+}
+
+export function missingMatrixCities(
+  cityOrder: string[],
+  results: LocationCompareResult[]
+) {
+  const loaded = new Set(results.map((result) => result.reference_city.trim().toLowerCase()));
+  return cityOrder.filter((city) => !loaded.has(city.trim().toLowerCase()));
+}
+
+function uniquePreservingOrder(cities: string[]) {
+  const seen = new Set<string>();
+  return cities.filter((city) => {
+    const key = city.trim().toLowerCase();
+    if (!city || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export async function compareMultipleCities(
   rows: Transaction[],
   cities: string[],
   householdSize: number,
   periodLabel: string
 ): Promise<LocationCompareResult[]> {
-  const uniqueCities = [...new Set(cities.filter(Boolean))];
+  const uniqueCities = uniquePreservingOrder(cities.filter(Boolean));
   const results = await Promise.allSettled(
     uniqueCities.map((city) =>
       compareToLiveReference(rows, city, householdSize, periodLabel)
     )
   );
 
-  const fulfilled = results.flatMap((result) =>
-    result.status === "fulfilled" ? [result.value] : []
-  );
+  const fulfilled = uniqueCities.flatMap((city, index) => {
+    const result = results[index];
+    return result?.status === "fulfilled" ? [result.value] : [];
+  });
 
   if (!fulfilled.length) {
     const rejected = results.find((result) => result.status === "rejected");
@@ -218,7 +356,7 @@ export async function compareMultipleCities(
     }
   }
 
-  return fulfilled;
+  return orderCityCompareResults(uniqueCities, fulfilled);
 }
 
 export async function fetchCityMonthlyCost(city: string, householdSize = 1) {

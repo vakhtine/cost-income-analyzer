@@ -45,6 +45,7 @@ export type HealthScoreMetrics = {
   non_essential_pct: number;
   non_essential_total: number;
   income_source_count: number;
+  expense_category_count: number;
   period_count: number;
   income_volatility_pct: number | null;
   expense_to_income_ratio: number;
@@ -97,8 +98,8 @@ export type CategoryTrend = {
   category: string;
   current_total: number;
   prior_total: number;
-  change_pct: number;
-  trend: "Spike" | "Up" | "Down" | "Stable";
+  change_pct: number | null;
+  trend: "Spike" | "Up" | "Down" | "Stable" | "New";
 };
 
 export type CategoryChange = {
@@ -107,7 +108,7 @@ export type CategoryChange = {
   previous_total: number;
   current_total: number;
   change_amount: number;
-  change_pct: number;
+  change_pct: number | null;
   top_drivers: CategoryDriver[];
 };
 
@@ -115,9 +116,9 @@ export type PeriodComparison = {
   previous_period: string;
   current_period: string;
   income_change: number;
-  income_change_pct: number;
+  income_change_pct: number | null;
   expense_change: number;
-  expense_change_pct: number;
+  expense_change_pct: number | null;
   category_changes: CategoryChange[];
 };
 
@@ -153,7 +154,7 @@ export type LocationComparison = {
   user_amount: number;
   reference_amount: number;
   difference: number;
-  difference_pct: number;
+  difference_pct: number | null;
   status: string;
 };
 

@@ -1,3 +1,4 @@
+import { formatHealthScore } from "@/lib/health-score";
 import { LIFESTYLE_OPTIONS } from "@/lib/wizard";
 import { RelocationAffordability } from "@/lib/relocation-affordability";
 
@@ -39,15 +40,17 @@ export function RelocationVerdict({
         <div>
           <h3>{affordability.verdictLabel}</h3>
           <p className="verdict-score-note">
-            <strong>{affordability.score}/100</strong> — relocation fit for{" "}
-            <strong>{referenceCity}</strong> based on scenario income minus estimated destination
-            cost (all amounts in <strong>{displayCurrency}</strong>
-            {hasIncomeScenario || hasLifestyleScenario ? ", including what-if adjustments" : ""}
-            ).
+            <strong>{affordability.score}/100</strong> — based on scenario income minus your
+            uploaded category spending at destination prices (all amounts in{" "}
+            <strong>{displayCurrency}</strong>
+            {hasIncomeScenario ? ", including what-if income adjustment" : ""}
+            ). Destination projected balance below uses estimated living costs in{" "}
+            <strong>{referenceCity}</strong>.
             {typeof financialHealthScore === "number" && (
               <>
                 {" "}
-                Your financial health score is <strong>{financialHealthScore}/100</strong> — that
+                Your financial health score is{" "}
+                <strong>{formatHealthScore(financialHealthScore)}/100</strong> — that
                 measures spending habits, not city affordability.
               </>
             )}

@@ -1,11 +1,12 @@
 "use client";
 
+import { SectionDetailToggle } from "@/components/SectionDetailToggle";
+import { usePurchasingPowerDetails } from "@/lib/plain-language-context";
 import {
   PurchasingPowerIndexEntry,
   topPurchasingPowerExample,
 } from "@/lib/relocation-composite";
-
-const BAR_COLORS = ["#4a5568", "#1a6b7c", "#b85c38", "#c9a227", "#2d6a4f", "#6366f1"];
+import { REPORT_CHART_COLORS } from "@/lib/report-theme";
 
 type Props = {
   homeCity: string;
@@ -13,6 +14,8 @@ type Props = {
 };
 
 export function PurchasingPowerIndexPanel({ homeCity, entries }: Props) {
+  const { showDetails, toggleDetails } = usePurchasingPowerDetails();
+
   if (entries.length < 2) return null;
 
   const maxIndex = Math.max(...entries.map((entry) => entry.index), 100);
@@ -20,11 +23,26 @@ export function PurchasingPowerIndexPanel({ homeCity, entries }: Props) {
 
   return (
     <section className="card purchasing-power-index-panel">
-      <p className="section-kicker">Purchasing power index</p>
-      <h3>Same income, indexed against home cost of living (home = 100)</h3>
-      <p className="explanatory-callout metric-hint">
-        Index bars update when you edit destination category costs in the table above.
-      </p>
+      <div className="section-card-top section-card-top-stack">
+        <div className="section-card-top-copy">
+          <p className="section-kicker">Purchasing power index</p>
+          <h3>Destination costs indexed against your spending total (home = 100)</h3>
+        </div>
+        <SectionDetailToggle
+          enabled={showDetails}
+          onToggle={toggleDetails}
+          label="Show details"
+          title="Show or hide purchasing power calculation notes"
+        />
+      </div>
+
+      {showDetails ? (
+        <p className="explanatory-callout metric-hint">
+          Uses the same home baseline as cost vs. home — your spending row total from the category
+          table. Index bars update when you edit destination costs above. A value above 100 means
+          destination projected costs are lower than your current spending; below 100 means higher.
+        </p>
+      ) : null}
 
       <div className="pp-index-chart" aria-label="Purchasing power index by city">
         {entries.map((entry, index) => {
@@ -37,7 +55,7 @@ export function PurchasingPowerIndexPanel({ homeCity, entries }: Props) {
                   className="pp-index-bar"
                   style={{
                     width: `${widthPct}%`,
-                    background: BAR_COLORS[index % BAR_COLORS.length],
+                    background: REPORT_CHART_COLORS[index % REPORT_CHART_COLORS.length],
                   }}
                 />
                 {entry.isHome ? (
@@ -50,7 +68,7 @@ export function PurchasingPowerIndexPanel({ homeCity, entries }: Props) {
         })}
       </div>
 
-      {example ? <p className="pp-index-note">{example}</p> : null}
+      {showDetails && example ? <p className="pp-index-note">{example}</p> : null}
     </section>
   );
 }

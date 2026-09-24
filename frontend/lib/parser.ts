@@ -1,6 +1,6 @@
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
-import { COLUMN_ALIASES, resolveTransactionType, RawRow } from "@/lib/constants";
+import { COLUMN_ALIASES, resolveSanitizedTransaction, RawRow } from "@/lib/constants";
 import { periodKeyFromDate } from "@/lib/period-utils";
 import {
   isDelimitedUpload,
@@ -187,15 +187,15 @@ function mapRows(rows: Record<string, unknown>[]): RawRow[] {
 
 export function classifyTransactions(rows: RawRow[], periodName: string, startId = 0): Transaction[] {
   return rows.map((row, index) => {
-    const transaction_type = resolveTransactionType(row.category);
+    const sanitized = resolveSanitizedTransaction(row.category);
     return {
       id: startId + index,
       merchant_name: row.merchant_name,
-      category: row.category,
+      category: sanitized.category,
       amount: row.amount,
       date: row.date,
       period: row.period || periodName,
-      transaction_type,
+      transaction_type: sanitized.transaction_type,
       abs_amount: Math.abs(row.amount),
     };
   });

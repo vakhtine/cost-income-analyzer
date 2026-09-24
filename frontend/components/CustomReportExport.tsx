@@ -16,6 +16,7 @@ type Props = {
   ) => CustomReportPayload | Promise<CustomReportPayload>;
   disabled?: boolean;
   availableTypes?: CustomReportType[];
+  defaultSelectedTypes?: CustomReportType[];
   periods?: string[];
   requirePeriodSelection?: boolean;
 };
@@ -30,13 +31,15 @@ export function CustomReportExport({
   buildPayload,
   disabled = false,
   availableTypes = ALL_TYPES,
+  defaultSelectedTypes,
   periods,
   requirePeriodSelection = false,
 }: Props) {
-  const [selected, setSelected] = useState<CustomReportType[]>([
+  const initialSelected = defaultSelectedTypes ?? [
     "expenses-by-category",
     "financial-health",
-  ]);
+  ];
+  const [selected, setSelected] = useState<CustomReportType[]>(initialSelected);
   const [periodMode, setPeriodMode] = useState<"single" | "range">("single");
   const [reportPeriod, setReportPeriod] = useState("");
   const [rangeStartIndex, setRangeStartIndex] = useState(0);
@@ -70,9 +73,12 @@ export function CustomReportExport({
   ]);
 
   function toggleType(type: CustomReportType) {
-    setSelected((current) =>
-      current.includes(type) ? current.filter((item) => item !== type) : [...current, type]
-    );
+    setSelected((current) => {
+      const next = current.includes(type)
+        ? current.filter((item) => item !== type)
+        : [...current, type];
+      return availableTypes.filter((item) => next.includes(item));
+    });
   }
 
   async function handleExport() {

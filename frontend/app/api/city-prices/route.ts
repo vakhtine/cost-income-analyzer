@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     : WHERENEXT_API;
 
   try {
-    const response = await fetch(url, { next: { revalidate: 86400 } });
+    const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
       return NextResponse.json({ error: "Could not fetch city prices." }, { status: 502 });
     }

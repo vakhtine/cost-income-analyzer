@@ -1,6 +1,13 @@
+import { formatHealthScore } from "@/lib/health-score";
+import { moveReadinessQualitativeLabel } from "@/lib/metric-tones";
 import { CityAffordabilitySummary } from "@/lib/relocation-scenario";
 import { CityFlag } from "@/components/CityFlag";
-import { CompositeScoreEntry } from "@/lib/relocation-composite";
+import {
+  CompositeScoreEntry,
+  RELOCATION_FIT_SCORE_LABEL,
+  SCENARIO_ADJUSTED_HEALTH_SCORE_LABEL,
+} from "@/lib/relocation-composite";
+import { scoreBandLabel } from "@/lib/report-charts";
 import { calculateCityRelocationReadiness } from "@/lib/relocation-profile";
 
 type Props = {
@@ -59,10 +66,10 @@ export function CityCompareGrid({
       <div className="section-heading">
         <h3>Side-by-side city comparison</h3>
         <p>
-          Ranked by relocation fit score in {displayCurrency} — same weights as the composite
-          section (cost savings 40%, purchasing power 35%, savings runway improvement 25%).
-          Readiness metrics update with your savings, what-if income, lifestyle, and any category
-          cost edits in the table above.
+          Ranked by {RELOCATION_FIT_SCORE_LABEL.toLowerCase()} in {displayCurrency}. Each card
+          compares cost vs. home, purchasing power, and savings runway — see the composite section
+          for how those factors relate to the score. Readiness metrics update with your savings,
+          what-if income, lifestyle, and any category cost edits in the table above.
         </p>
       </div>
       {customBenchmarksActive ? (
@@ -105,13 +112,16 @@ export function CityCompareGrid({
                   {cityName}
                 </h4>
                 <span className={`city-score-pill verdict-${affordability.verdict}`}>
-                  {relocationFitScore}/100
+                  {formatHealthScore(relocationFitScore)}/100
                 </span>
               </div>
-              <p className="composite-score-type">Relocation fit score</p>
+              <p className="composite-gauge-band">
+                {scoreBandLabel(relocationFitScore, "relocation")}
+              </p>
               {typeof financialHealthScore === "number" && (
                 <p className="city-compare-health-score">
-                  Financial health score: <strong>{financialHealthScore}/100</strong>
+                  {SCENARIO_ADJUSTED_HEALTH_SCORE_LABEL}:{" "}
+                  <strong>{formatHealthScore(financialHealthScore)}/100</strong>
                 </p>
               )}
               <p className="city-compare-verdict">{affordability.verdictLabel}</p>
@@ -173,6 +183,11 @@ export function CityCompareGrid({
                       ? `${readiness.moveReadinessPct.toFixed(0)}%`
                       : "—"}
                   </strong>
+                  {scenarioIncomeDisplay > 0 && affordability.displayReferenceCost > 0 ? (
+                    <em className="city-readiness-qualitative">
+                      {moveReadinessQualitativeLabel(readiness.moveReadinessPct)}
+                    </em>
+                  ) : null}
                 </div>
                 <div className="city-readiness-metric">
                   <span>Income coverage</span>

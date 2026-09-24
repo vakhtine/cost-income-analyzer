@@ -1,4 +1,5 @@
 import { NON_ESSENTIAL_CATEGORIES } from "@/lib/constants";
+import { canonicalExpenseCategory } from "@/lib/category-normalize";
 import { computeHerfindahlIndex } from "@/lib/spending-metrics";
 import {
   filterExpenseTransactions,
@@ -8,30 +9,59 @@ import {
   sumIncomeAmount,
 } from "@/lib/transaction-filters";
 import { CategorySummary, HealthScore, Transaction } from "@/lib/types";
-import { mean, round2, stdDev } from "@/lib/utils";
+import { mean, round2, stdDev, calendarDaysForPeriodKeys } from "@/lib/utils";
 
 const SYNTHETIC_PERIOD_KEYS = new Set(["All periods", "__average__"]);
 
 /** Weights for the four financial health score factors (must sum to 1). */
 export const HEALTH_SCORE_WEIGHTS = {
   savings_rate: 0.3,
-  income_stability: 0.25,
-  expense_stability: 0.25,
-  non_essential: 0.2,
+  income_stability: 0.2,
+  expense_stability: 0.2,
+  non_essential: 0.3,
 } as const;
 
-export function computeOverallHealthScore(scores: {
-  savings_rate_score: number;
-  income_stability_score: number;
-  expense_stability_score: number;
-  non_essential_score: number;
-}) {
-  return Math.round(
-    scores.savings_rate_score * HEALTH_SCORE_WEIGHTS.savings_rate +
-      scores.income_stability_score * HEALTH_SCORE_WEIGHTS.income_stability +
-      scores.expense_stability_score * HEALTH_SCORE_WEIGHTS.expense_stability +
-      scores.non_essential_score * HEALTH_SCORE_WEIGHTS.non_essential
-  );
+export const HEALTH_SCORE_WEIGHT_ITEMS = [
+  { label: "Savings rate", weight: HEALTH_SCORE_WEIGHTS.savings_rate, key: "savings_rate" },
+  { label: "Income stability", weight: HEALTH_SCORE_WEIGHTS.income_stability, key: "income_stability" },
+  { label: "Expense stability", weight: HEALTH_SCORE_WEIGHTS.expense_stability, key: "expense_stability" },
+  {
+    label: "Non-essential spending control",
+    weight: HEALTH_SCORE_WEIGHTS.non_essential,
+    key: "non_essential",
+  },
+] as const;
+
+type HealthScoreWeights = {
+  savings_rate: number;
+  income_stability: number;
+  expense_stability: number;
+  non_essential: number;
+};
+
+export function computeOverallHealthScore(
+  scores: {
+    savings_rate_score: number;
+    income_stability_score: number;
+    expense_stability_score: number;
+    non_essential_score: number;
+  },
+  weights: HealthScoreWeights = HEALTH_SCORE_WEIGHTS
+) {
+  const weighted =
+    scores.savings_rate_score * weights.savings_rate +
+    scores.income_stability_score * weights.income_stability +
+    scores.expense_stability_score * weights.expense_stability +
+    scores.non_essential_score * weights.non_essential;
+  return roundHealthScore(weighted);
+}
+
+export function roundHealthScore(score: number) {
+  return Math.round(score * 10) / 10;
+}
+
+export function formatHealthScore(score: number) {
+  return roundHealthScore(score).toFixed(1);
 }
 
 function scoreDiversification(hhi: number) {
@@ -67,10 +97,18 @@ function buildExpenseCategorySummaries(
 
 function scoreSavingsRate(savingsRate: number) {
   if (savingsRate < 0) {
-    return Math.max(0, Math.round(35 + savingsRate * 2));
+    return Math.max(0, Math.round(20 + savingsRate * 2));
   }
-  // Linear 0–30% savings rate maps to 0–100 score (30%+ caps at 100).
-  return Math.min(100, Math.round((savingsRate / 30) * 100));
+  // Each 5% of savings rate adds 20 points (0% = 0, 20% = 80, 25%+ = 100).
+  return Math.min(100, Math.round((savingsRate / 5) * 20));
+}
+
+/** Linear savings-rate scoring for destination comparisons — avoids capping every city at 100. */
+export function scoreContinuousSavingsRate(savingsRate: number) {
+  if (savingsRate < 0) {
+    return Math.max(0, Math.round(20 + savingsRate * 2));
+  }
+  return Math.min(100, Math.round(savingsRate));
 }
 
 function incomeStabilityDetail(
@@ -110,7 +148,7 @@ function scoreNonEssential(rows: Transaction[], totalIncome: number, totalExpens
   );
 }
 
-function scoreNonEssentialFromTotal(
+export function scoreNonEssentialFromTotal(
   nonEssentialTotal: number,
   totalIncome: number,
   totalExpenses: number
@@ -155,7 +193,10 @@ function computeIncomeVolatility(
   periods: Record<string, Transaction[]>,
   periodNames: string[]
 ) {
-  const incomes = periodNames.map((name) => sumIncomeAmount(periods[name] ?? []));
+  const reportableContext = periodNames.filter((name) =>
+    periodHasReportableData(periods[name] ?? [])
+  );
+  const incomes = reportableContext.map((name) => sumIncomeAmount(periods[name] ?? []));
   const withIncome = incomes.filter((value) => value > 0);
   if (withIncome.length <= 1) return null;
   const avg = mean(withIncome);
@@ -166,7 +207,10 @@ function computeExpenseVolatility(
   periods: Record<string, Transaction[]>,
   periodNames: string[]
 ) {
-  const expenses = periodNames.map((name) => sumExpenseAmount(periods[name] ?? []));
+  const reportableContext = periodNames.filter((name) =>
+    periodHasReportableData(periods[name] ?? [])
+  );
+  const expenses = reportableContext.map((name) => sumExpenseAmount(periods[name] ?? []));
   const withExpenses = expenses.filter((value) => value > 0);
   if (withExpenses.length <= 1) return null;
   const avg = mean(withExpenses);
@@ -203,7 +247,7 @@ function savingsRateDetail(
   focusPeriod: string
 ) {
   if (totalIncome > 0) {
-    return `Savings rate: ${savingsRate.toFixed(1)}% of income kept after expenses for ${focusPeriod}. Score ${score}/100 scales linearly (0% = 0, 30%+ = 100).`;
+    return `Savings rate: ${savingsRate.toFixed(1)}% of income kept after expenses for ${focusPeriod}. Score ${score}/100 increases in 5% steps (+20 points per 5%; 20% ≈ 80, 25%+ = 100).`;
   }
 
   return `No income recorded for ${focusPeriod}. Savings rate cannot be calculated (score 0/100). Expenses this period: ${formatMoney(totalExpenses)}.`;
@@ -235,7 +279,18 @@ function expenseStabilityDetail(
 
   const avg = mean(withExpenses);
   const volatility = avg ? stdDev(withExpenses) / avg : 0;
-  return `Compared ${withExpenses.length} period(s) with spending. Average expenses ${formatMoney(avg)} with volatility ${(volatility * 100).toFixed(1)}% (std dev / mean). Lower volatility scores higher.`;
+  const periodTotals = reportableContext
+    .map((name) => `${name}: ${formatMoney(sumExpenseAmount(allPeriodRows[name] ?? []))}`)
+    .join("; ");
+  return `Compared ${withExpenses.length} period(s) with spending (${periodTotals}). Average ${formatMoney(avg)} with volatility ${(volatility * 100).toFixed(1)}% (std dev / mean). This uses all included months — it does not change when you switch the period filter above.`;
+}
+
+/** Period volatility = std dev / mean (coefficient of variation). Used for income and expense stability. */
+export function scoreVolatilityStability(volatility: number) {
+  if (volatility <= 0.02) return 95;
+  if (volatility <= 0.05) return 80;
+  if (volatility <= 0.1) return 65;
+  return 50;
 }
 
 function scoreIncomeStabilityForPeriod(
@@ -263,10 +318,7 @@ function scoreIncomeStabilityForPeriod(
   const avg = mean(withIncome);
   if (!avg) return 0;
   const volatility = stdDev(withIncome) / avg;
-  if (volatility <= 0.05) return 95;
-  if (volatility <= 0.15) return 75;
-  if (volatility <= 0.3) return 55;
-  return 35;
+  return scoreVolatilityStability(volatility);
 }
 
 function scoreExpenseStabilityForPeriod(
@@ -294,16 +346,13 @@ function scoreExpenseStabilityForPeriod(
   const avg = mean(withExpenses);
   if (!avg) return 0;
   const volatility = stdDev(withExpenses) / avg;
-  if (volatility <= 0.05) return 95;
-  if (volatility <= 0.15) return 75;
-  if (volatility <= 0.3) return 55;
-  return 35;
+  return scoreVolatilityStability(volatility);
 }
 
 function healthSummary(score: number) {
-  if (score >= 80) return "Strong financial health";
-  if (score >= 65) return "Healthy with room to improve";
-  if (score >= 50) return "Moderate financial health";
+  if (score >= 85) return "Excellent financial health";
+  if (score >= 65) return "Good financial health";
+  if (score >= 50) return "Reasonable financial health";
   return "Needs attention";
 }
 
@@ -317,9 +366,16 @@ function formatMoney(value: number) {
   }).format(value);
 }
 
+function isDiscretionaryExpenseCategory(category: string) {
+  const raw = category.trim().toLowerCase();
+  if (NON_ESSENTIAL_CATEGORIES.has(raw)) return true;
+  const canonical = canonicalExpenseCategory(category).trim().toLowerCase();
+  return NON_ESSENTIAL_CATEGORIES.has(canonical);
+}
+
 function computeNonEssentialTotal(rows: Transaction[]) {
   return filterExpenseTransactions(rows)
-    .filter((row) => NON_ESSENTIAL_CATEGORIES.has(row.category.trim().toLowerCase()))
+    .filter((row) => isDiscretionaryExpenseCategory(row.category))
     .reduce((sum, row) => sum + row.abs_amount, 0);
 }
 
@@ -331,6 +387,8 @@ export function adjustHealthScoreForScenarioIncome(
   options?: {
     focusPeriod?: string;
     nonEssentialTotal?: number;
+    continuousSavingsRate?: boolean;
+    weights?: HealthScoreWeights;
   }
 ): HealthScore {
   const nonEssentialTotal =
@@ -341,18 +399,26 @@ export function adjustHealthScoreForScenarioIncome(
       : 0;
   const nonEssentialPct = scenarioIncome ? (nonEssentialTotal / scenarioIncome) * 100 : 0;
 
-  const savings_rate_score = scoreSavingsRateForPeriod(savingsRate, scenarioIncome);
+  const savings_rate_score =
+    scenarioIncome <= 0
+      ? 0
+      : options?.continuousSavingsRate
+        ? scoreContinuousSavingsRate(savingsRate)
+        : scoreSavingsRateForPeriod(savingsRate, scenarioIncome);
   const non_essential_score = scoreNonEssentialFromTotal(
     nonEssentialTotal,
     scenarioIncome,
     scenarioExpenses
   );
-  const overall = computeOverallHealthScore({
-    savings_rate_score,
-    income_stability_score: base.income_stability_score,
-    expense_stability_score: base.expense_stability_score,
-    non_essential_score,
-  });
+  const overall = computeOverallHealthScore(
+    {
+      savings_rate_score,
+      income_stability_score: base.income_stability_score,
+      expense_stability_score: base.expense_stability_score,
+      non_essential_score,
+    },
+    options?.weights
+  );
   const focusPeriod = options?.focusPeriod ?? "this period";
 
   return {
@@ -422,6 +488,18 @@ export function calculateHealthScoreForPeriod(
   const diversification_score = scoreDiversification(concentration.hhi);
   const largestExpense = expenseCategoriesForMetrics[0];
   const incomeSources = new Set(filterIncomeTransactions(focusRows).map((row) => row.category));
+  const calendarDayDenominator = (() => {
+    if (/^\d{4}-\d{2}$/.test(focusPeriod)) {
+      return calendarDaysForPeriodKeys([focusPeriod]);
+    }
+    const reportableContext = contextPeriods.filter((name) =>
+      periodHasReportableData(allPeriodRows[name] ?? [])
+    );
+    if (reportableContext.length) {
+      return calendarDaysForPeriodKeys(reportableContext);
+    }
+    return 30;
+  })();
 
   const savings_rate_score = scoreSavingsRateForPeriod(savingsRate, totalIncome);
   const income_stability_score = scoreIncomeStabilityForPeriod(
@@ -469,6 +547,7 @@ export function calculateHealthScoreForPeriod(
       non_essential_pct: nonEssentialPct,
       non_essential_total: nonEssentialTotal,
       income_source_count: incomeSources.size,
+      expense_category_count: expenseCategoriesForMetrics.length,
       period_count: contextPeriods.filter((name) =>
         periodHasReportableData(allPeriodRows[name] ?? [])
       ).length,
@@ -480,7 +559,7 @@ export function calculateHealthScoreForPeriod(
         totalExpenses > 0
           ? ((totalExpenses - nonEssentialTotal) / totalExpenses) * 100
           : 0,
-      avg_daily_spend: totalExpenses / 30,
+      avg_daily_spend: totalExpenses / calendarDayDenominator,
       non_essential_of_expenses_pct:
         totalExpenses > 0 ? (nonEssentialTotal / totalExpenses) * 100 : 0,
       expense_volatility_pct: computeExpenseVolatility(allPeriodRows, contextPeriods),
@@ -499,15 +578,15 @@ export function calculateHealthScore(periods: Record<string, Transaction[]>): He
 
 export const HEALTH_SCORE_METHODOLOGY = {
   income_stability:
-    "Scores income for the selected period. With no income in that period, the score is 0. With multiple periods that have income, we measure how much total income swings month to month.",
+    "With multiple periods that have income, we measure month-to-month income volatility (std dev ÷ mean). Tiers: ≤2% → 95, 2–5% → 80, 5–10% → 65, ≥10% → 50. With only one period, score is based on the number of income sources in that period.",
   expense_stability:
-    "Scores expenses for the selected period. With no spending in that period, the score is 0. With multiple periods that have expenses, we measure how much total spending swings month to month. Lower volatility scores higher.",
+    "With multiple periods that have expenses, we measure month-to-month spending volatility (std dev ÷ mean). Tiers: ≤2% → 95, 2–5% → 80, 5–10% → 65, ≥10% → 50. With only one period, score is based on the number of expense categories in that period.",
   non_essential:
     "We total spending in discretionary categories — restaurants, cafes, fast food, entertainment, shopping, subscriptions, travel, and similar — then divide by your income. Lower ratios score higher. Transfers between your own accounts are excluded.",
   savings_rate:
-    "Requires income in the selected period. Score scales linearly from 0% savings (0 points) to 30%+ savings (100 points). Example: 25% savings ≈ 83/100.",
+    "Requires income in the selected period. Score rises in 5% steps: each 5% of savings adds 20 points (5% → 20, 10% → 40, 15% → 60, 20% → 80, 25%+ → 100). Negative savings rate scores lower.",
   expense_concentration:
-    "Herfindahl-Hirschman Index (HHI) of your expenses categories for the selected period. Lower values mean spending is spread across more categories; higher values mean one or two categories dominate (0 = perfectly spread, 1 = one category only).",
+    "Herfindahl-Hirschman Index (HHI) of your expense categories for the selected period. Lower values mean spending is spread across more categories; higher values mean one or two categories dominate (0 = perfectly spread, 1 = one category only).",
   expense_volatility:
     "Month-to-month variation in your total expenses, measured as coefficient of variation across periods with spending.",
 };

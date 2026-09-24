@@ -25,12 +25,42 @@ export const TRANSFER_CATEGORIES = new Set([
   "interac e-transfer",
   "interac",
   "payment transfer",
+  "person-to-person",
+  "person to person",
+  "p2p",
 ]);
+
+export function isPersonToPersonCategory(category: string) {
+  const normalized = category.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!normalized) return false;
+  if (normalized === "p2p" || normalized.includes("p2p")) return true;
+  if (normalized.includes("person-to-person") || normalized.includes("person to person")) {
+    return true;
+  }
+  return /person\s*[-–—]?\s*to\s*[-–—]?\s*person/.test(normalized);
+}
+
+/** Map person-to-person labels to the single Transfer category. */
+export function coercePersonToPersonTransfer(category: string) {
+  return isPersonToPersonCategory(category) ? TRANSFER_CATEGORY_LABEL : category.trim();
+}
+
+export function resolveSanitizedTransaction(category: string): {
+  category: string;
+  transaction_type: "income" | "expense" | "transfer";
+} {
+  if (isPersonToPersonCategory(category)) {
+    return { category: TRANSFER_CATEGORY_LABEL, transaction_type: "transfer" };
+  }
+  const trimmed = category.trim();
+  return { category: trimmed, transaction_type: resolveTransactionType(trimmed) };
+}
 
 export const TRANSFER_CATEGORY_LABEL = "Transfer";
 
 export function isTransferCategory(category: string) {
   const normalized = category.trim().toLowerCase();
+  if (isPersonToPersonCategory(category)) return true;
   if (TRANSFER_CATEGORIES.has(normalized)) return true;
   if (normalized.includes("transfer") && !normalized.includes("transport")) return true;
   return false;

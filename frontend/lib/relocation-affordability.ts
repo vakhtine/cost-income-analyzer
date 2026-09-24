@@ -1,10 +1,20 @@
 import {
+  computeUserExpensesAtDestinationPrices,
+  totalUploadedExpenseCategories,
+  uploadedExpenseCategoryTotals,
+} from "@/lib/benchmark-categories";
+import {
   convertAmount,
   convertIncomeAmount,
   CurrencyCode,
   ExchangeRates,
 } from "@/lib/currency";
-import { LocationCompareResult, PeriodAnalysis } from "@/lib/types";
+import {
+  computeRelocationFitBreakdown,
+  RELOCATION_FIT_FACTOR_NOTES,
+  resolveRelocationHealthContext,
+} from "@/lib/relocation-fit-score";
+import { HealthScore, LocationCompareResult, PeriodAnalysis, Transaction } from "@/lib/types";
 import { round2 } from "@/lib/utils";
 import { lifestyleMultiplier, LifestyleLevel } from "@/lib/wizard";
 
@@ -44,8 +54,17 @@ export type RelocationAffordability = {
   scenarioIncomeDisplay: number;
   displayExpenses: number;
   displayReferenceCost: number;
+  scenarioSurplus: number;
+  /** Uploaded matrix-category spending scaled to destination prices. */
+  displayCategoryAdjustedExpenses: number;
+  /** Scenario income minus destination-adjusted category expenses. */
+  adjustedScenarioSurplus: number;
   incomeChangePct: number;
   lifestyle: LifestyleLevel;
+  scoreSummary: string;
+  savingsRateScore: number;
+  incomeStabilityScore: number;
+  nonEssentialScore: number;
 };
 
 function comfortableSurplusFloor(displayCurrency: CurrencyCode) {
@@ -78,9 +97,29 @@ function comfortableSurplusFloor(displayCurrency: CurrencyCode) {
   }
 }
 
+/** @deprecated Use factor scores on RelocationAffordability or computeRelocationFitBreakdown. */
+export function computeRelocationAffordabilityScores(aff: RelocationAffordability) {
+  return {
+    savingsRateScore: aff.savingsRateScore,
+    incomeStabilityScore: aff.incomeStabilityScore,
+    nonEssentialScore: aff.nonEssentialScore,
+    heroScore: aff.score,
+  };
+}
+
+export const RELOCATION_AFFORDABILITY_FACTOR_NOTES = RELOCATION_FIT_FACTOR_NOTES;
+
+export const AT_HOME_BUDGET_SCORE_LABEL =
+  "Relocation fit score - using your actual expenses";
+
+export const AT_HOME_BUDGET_SCORE_NOTE =
+  "Same what-if income and same three factors as the projected-expenses score (savings rate, income stability, non-essential control). Each expense category from your upload is scaled by that category's price level at the destination vs. your home city (local price data, not exchange rates).";
+
+/** @deprecated Use AT_HOME_BUDGET_SCORE_LABEL */
+export const CURRENT_BUDGET_MARGIN_SCORE_LABEL = AT_HOME_BUDGET_SCORE_LABEL;
+
 function resolveVerdict(
   projectedBalance: number,
-  score: number,
   scenarioIncomeDisplay: number,
   displayReferenceCost: number,
   displayCurrency: CurrencyCode
@@ -101,8 +140,7 @@ function resolveVerdict(
   if (
     projectedBalance >= comfortableFloor ||
     marginRatio >= 0.3 ||
-    costCushion >= 0.35 ||
-    score >= 70
+    costCushion >= 0.35
   ) {
     return { verdict: "comfortable", verdictLabel: "Comfortable" };
   }
@@ -110,13 +148,36 @@ function resolveVerdict(
   if (
     projectedBalance >= comfortableFloor * 0.35 ||
     marginRatio >= 0.12 ||
-    costCushion >= 0.15 ||
-    score >= 40
+    costCushion >= 0.15
   ) {
     return { verdict: "likely", verdictLabel: "Likely affordable" };
   }
 
   return { verdict: "tight", verdictLabel: "Tight but possible" };
+}
+
+function destinationPricePhrase(destinationCity: string) {
+  const parts = destinationCity.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    const cityName = parts[0];
+    const country = parts.slice(1).join(", ");
+    return `at ${cityName}, using ${country} prices`;
+  }
+  return `at ${destinationCity} prices`;
+}
+
+function buildAffordabilityScoreSummary(
+  scenarioSurplus: number,
+  scenarioIncomeDisplay: number,
+  displayCurrency: CurrencyCode,
+  periodLabel: string,
+  destinationCity: string
+) {
+  const expenseLabel = `your uploaded category spending ${destinationPricePhrase(destinationCity)}`;
+  if (scenarioSurplus < 0) {
+    return `Based on ${periodLabel}, your scenario income (${formatDisplayAmount(scenarioIncomeDisplay, displayCurrency, 2)} ${displayCurrency}) does not cover ${expenseLabel} — about ${formatDisplayAmount(Math.abs(scenarioSurplus), displayCurrency)} short each month.`;
+  }
+  return `Based on ${periodLabel}, your scenario income (${formatDisplayAmount(scenarioIncomeDisplay, displayCurrency, 2)} ${displayCurrency}) against ${expenseLabel} leaves about ${formatDisplayAmount(scenarioSurplus, displayCurrency)} per month.`;
 }
 
 function buildAffordabilitySummary(
@@ -187,7 +248,14 @@ export function computeRelocationAffordability(
   periodAnalysis: PeriodAnalysis,
   locationResult: LocationCompareResult,
   currency?: AffordabilityCurrencyContext,
-  scenario?: AffordabilityScenario
+  scenario?: AffordabilityScenario,
+  options?: {
+    periodLabel?: string;
+    homeLocationResult?: LocationCompareResult;
+    baseHealthScore?: HealthScore;
+    expenseRows?: Transaction[];
+    focusPeriod?: string;
+  }
 ): RelocationAffordability {
   const incomeChangePct = scenario?.incomeChangePct ?? 0;
   const lifestyle = scenario?.lifestyle ?? "average";
@@ -210,49 +278,85 @@ export function computeRelocationAffordability(
   const displayReferenceCost = round2(
     toDisplayReferenceCost(referenceMonthlyCost, currency) * lifestyleMult
   );
+  const scenarioSurplus = round2(scenarioIncomeDisplay - displayExpenses);
+
+  const homeResult = options?.homeLocationResult;
+  const userCategoryTotals = uploadedExpenseCategoryTotals(
+    periodAnalysis.expense_categories
+  );
+  const isDestination =
+    homeResult &&
+    homeResult.reference_city.trim().toLowerCase() !==
+      locationResult.reference_city.trim().toLowerCase();
+  const rawCategoryAdjusted = isDestination
+    ? computeUserExpensesAtDestinationPrices(
+        locationResult,
+        homeResult,
+        userCategoryTotals,
+        lifestyleMult
+      ).total
+    : totalUploadedExpenseCategories(userCategoryTotals);
+  const displayCategoryAdjustedExpenses = round2(
+    toDisplayExpense(rawCategoryAdjusted, currency)
+  );
+  const adjustedScenarioSurplus = round2(
+    scenarioIncomeDisplay - displayCategoryAdjustedExpenses
+  );
+
   const projectedBalance = round2(scenarioIncomeDisplay - displayReferenceCost);
   const monthlyBuffer = round2(
     scenarioIncomeDisplay - displayExpenses - (displayReferenceCost - displayExpenses)
   );
 
-  let score = 0;
-  if (scenarioIncomeDisplay > 0) {
-    const balanceRatio = projectedBalance / scenarioIncomeDisplay;
-    score = Math.round(Math.min(100, Math.max(0, balanceRatio * 100)));
-  } else if (projectedBalance >= 0) {
-    score = 55;
-  } else {
-    score = 25;
-  }
+  const healthContext = resolveRelocationHealthContext({
+    baseHealthScore: options?.baseHealthScore,
+    expenseRows: options?.expenseRows,
+    periodLabel: options?.periodLabel ?? locationResult.period_label,
+    focusPeriod: options?.focusPeriod,
+  });
 
-  if (projectedBalance > 0 && displayReferenceCost > 0) {
-    const surplusScore = Math.round(
-      Math.min(100, (projectedBalance / (displayReferenceCost * 0.5)) * 45)
-    );
-    score = Math.max(score, surplusScore);
-  }
+  const homeUploadedCost = displayExpenses;
+  const fitBreakdown = healthContext
+    ? computeRelocationFitBreakdown(
+        healthContext.baseHealthScore,
+        healthContext.expenseRows,
+        scenarioIncomeDisplay,
+        displayCategoryAdjustedExpenses,
+        (amount) => round2(toDisplayExpense(amount, currency)),
+        homeUploadedCost
+      )
+    : {
+        overall: 0,
+        savingsRateScore: 0,
+        incomeStabilityScore: 0,
+        expenseStabilityScore: 0,
+        nonEssentialScore: 0,
+      };
+
+  const score = fitBreakdown.overall;
 
   const { verdict, verdictLabel } = resolveVerdict(
     projectedBalance,
-    score,
     scenarioIncomeDisplay,
     displayReferenceCost,
     displayCurrency
   );
-  if (verdict === "comfortable") {
-    score = Math.max(score, 78);
-  } else if (verdict === "likely") {
-    score = Math.max(score, 55);
-  }
   const city = locationResult.reference_city;
 
   const summary = buildAffordabilitySummary(
     projectedBalance,
     scenarioIncomeDisplay,
     displayCurrency,
-    locationResult.period_label,
+    options?.periodLabel ?? locationResult.period_label,
     city,
     verdict
+  );
+  const scoreSummary = buildAffordabilityScoreSummary(
+    adjustedScenarioSurplus,
+    scenarioIncomeDisplay,
+    displayCurrency,
+    options?.periodLabel ?? locationResult.period_label,
+    city
   );
 
   const tips: string[] = [];
@@ -266,15 +370,18 @@ export function computeRelocationAffordability(
       `Income converted from ${incomeCurrency} to ${displayCurrency} at latest exchange rates (no income change in what-if scenario).`
     );
   }
+  tips.push(
+    `Actual-expenses score uses savings rate, income stability, and non-essential control — same factors as the projected-expenses score. Each uploaded category is repriced using destination vs. home price levels (not exchange rates).`
+  );
   if (lifestyle !== "average") {
     const lifestyleLabel =
       lifestyle === "budget" ? "budget-conscious" : "comfortable";
     tips.push(
-      `Destination costs adjusted for a ${lifestyleLabel} lifestyle (${lifestyleMult}x on ${REFERENCE_COST_CURRENCY} benchmarks, shown in ${displayCurrency}).`
+      `Projected-expenses score uses a ${lifestyleLabel} lifestyle multiplier (${lifestyleMult}x) on ${REFERENCE_COST_CURRENCY} benchmarks, shown in ${displayCurrency}.`
     );
   } else {
     tips.push(
-      `Destination costs from ${REFERENCE_COST_CURRENCY} benchmarks, converted to ${displayCurrency}.`
+      `Projected-expenses score uses ${REFERENCE_COST_CURRENCY} city benchmarks, converted to ${displayCurrency} for display only.`
     );
   }
 
@@ -324,7 +431,14 @@ export function computeRelocationAffordability(
     scenarioIncomeDisplay,
     displayExpenses,
     displayReferenceCost,
+    scenarioSurplus,
+    displayCategoryAdjustedExpenses,
+    adjustedScenarioSurplus,
     incomeChangePct,
     lifestyle,
+    scoreSummary,
+    savingsRateScore: fitBreakdown.savingsRateScore,
+    incomeStabilityScore: fitBreakdown.incomeStabilityScore,
+    nonEssentialScore: fitBreakdown.nonEssentialScore,
   };
 }

@@ -17,9 +17,9 @@ NON_ESSENTIAL_CATEGORIES = {
 
 HEALTH_SCORE_WEIGHTS = {
     "savings_rate": 0.30,
-    "income_stability": 0.25,
-    "expense_stability": 0.25,
-    "non_essential": 0.20,
+    "income_stability": 0.20,
+    "expense_stability": 0.20,
+    "non_essential": 0.30,
 }
 
 
@@ -103,13 +103,13 @@ def _score_income_stability(periods: dict[str, pd.DataFrame]) -> int:
     if series.mean() == 0:
         return 20
     volatility = series.std(ddof=0) / series.mean()
-    if volatility <= 0.05:
+    if volatility <= 0.02:
         return 95
-    if volatility <= 0.15:
-        return 75
-    if volatility <= 0.30:
-        return 55
-    return 35
+    if volatility <= 0.05:
+        return 80
+    if volatility <= 0.10:
+        return 65
+    return 50
 
 
 def _score_expense_stability(periods: dict[str, pd.DataFrame]) -> int:
@@ -138,13 +138,13 @@ def _score_expense_stability(periods: dict[str, pd.DataFrame]) -> int:
     if series.mean() == 0:
         return 0
     volatility = series.std(ddof=0) / series.mean()
-    if volatility <= 0.05:
+    if volatility <= 0.02:
         return 95
-    if volatility <= 0.15:
-        return 75
-    if volatility <= 0.30:
-        return 55
-    return 35
+    if volatility <= 0.05:
+        return 80
+    if volatility <= 0.10:
+        return 65
+    return 50
 
 
 def _score_non_essential(df: pd.DataFrame, total_income: float) -> int:

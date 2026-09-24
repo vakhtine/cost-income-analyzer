@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { PrivacyFlow } from "@/components/HeroSection";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { IconUpload } from "@/components/Icons";
 import { StatementSanitizerPanel } from "@/components/StatementSanitizerPanel";
 import {
@@ -11,9 +11,12 @@ import {
   unsupportedUploadMessage,
 } from "@/lib/upload-formats";
 
+const FILE_INPUT_ID = "statement-file-upload";
+
 type Props = {
   onUpload: (files: File[]) => void;
   loading?: boolean;
+  error?: string;
   onError?: (message: string) => void;
 };
 
@@ -22,23 +25,37 @@ function pickSupportedFiles(fileList: FileList | File[] | null | undefined) {
   return Array.from(fileList).filter((file) => isSupportedUploadFile(file.name));
 }
 
-export function UploadZone({ onUpload, loading, onError }: Props) {
+export function UploadZone({ onUpload, loading, error, onError }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [mounted, setMounted] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [sampleLoading, setSampleLoading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
 
-  function handleFiles(fileList: FileList | File[] | null | undefined) {
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const handleFiles = useCallback(
+    (fileList: FileList | File[] | null | undefined) => {
+      if (loading) return;
+
+      const files = pickSupportedFiles(fileList);
+      if (!files.length) {
+        onError?.(unsupportedUploadMessage());
+        return;
+      }
+
+      onError?.("");
+      setSelectedFiles(files.map((file) => file.name));
+      onUpload(files);
+    },
+    [loading, onError, onUpload]
+  );
+
+  function openFilePicker() {
     if (loading) return;
-
-    const files = pickSupportedFiles(fileList);
-    if (!files.length) {
-      onError?.(unsupportedUploadMessage());
-      return;
-    }
-
-    setSelectedFiles(files.map((file) => file.name));
-    onUpload(files);
+    inputRef.current?.click();
   }
 
   function handleDrop(event: React.DragEvent<HTMLDivElement>) {
@@ -50,6 +67,7 @@ export function UploadZone({ onUpload, loading, onError }: Props) {
   async function loadSampleData() {
     if (loading || sampleLoading) return;
     setSampleLoading(true);
+    onError?.("");
     try {
       const response = await fetch("/sample_transactions.csv");
       if (!response.ok) throw new Error("Could not load sample file.");
@@ -64,56 +82,63 @@ export function UploadZone({ onUpload, loading, onError }: Props) {
     }
   }
 
+  const fileInput = (
+    <input
+      id={FILE_INPUT_ID}
+      ref={inputRef}
+      type="file"
+      accept={SUPPORTED_UPLOAD_ACCEPT}
+      multiple
+      disabled={loading}
+      tabIndex={-1}
+      aria-hidden="true"
+      className="upload-file-input"
+      onChange={(event) => {
+        handleFiles(event.target.files);
+        event.target.value = "";
+      }}
+    />
+  );
+
   return (
     <section className="upload-zone card upload-zone-home">
+      <p className="eyebrow">Upload</p>
       <h2>Upload your statements</h2>
-      <p className="upload-subtitle">
-        Upload one or more spreadsheet files with the <strong>same column headers</strong>{" "}
-        (<strong>Merchant</strong>, <strong>Category</strong>, <strong>Amount</strong>, and{" "}
-        <strong>Date</strong> optional — highly recommended for more detailed analysis and reports).
-        Supported formats: {SUPPORTED_UPLOAD_LABEL}. Each file can represent a separate month. No
-        bank login required.
+      <p className="plain">
+        One or more files, same column headers. Each file can represent a month. No bank login,
+        ever. Supported formats: {SUPPORTED_UPLOAD_LABEL}.
       </p>
 
       <StatementSanitizerPanel />
 
+      {error ? <div className="error upload-zone-error">{error}</div> : null}
+
+      {mounted ? createPortal(fileInput, document.body) : null}
+
       <div
-        className={`drop-area ${dragging ? "dragging" : ""} ${loading ? "disabled" : ""}`}
+        className={`drop-area template-dropzone ${dragging ? "dragging" : ""} ${loading ? "disabled" : ""}`}
         onDragOver={(event) => {
           event.preventDefault();
           if (!loading) setDragging(true);
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
-        onClick={() => !loading && inputRef.current?.click()}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            inputRef.current?.click();
-          }
-        }}
       >
-        <div className="drop-icon-wrap">
+        <div className="drop-icon-wrap template-drop-ico" aria-hidden="true">
           <IconUpload size={34} />
         </div>
         <div className="drop-title">
           {loading ? "Analyzing your files..." : "Drag & drop your files here"}
         </div>
-        <div className="drop-hint">or click to browse · {SUPPORTED_UPLOAD_LABEL}</div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept={SUPPORTED_UPLOAD_ACCEPT}
-          multiple
-          className="upload-file-input"
-          aria-label="Choose statement files to upload"
-          onChange={(event) => {
-            handleFiles(event.target.files);
-            event.target.value = "";
-          }}
-        />
+        <div className="drop-hint">or use the button below · {SUPPORTED_UPLOAD_LABEL}</div>
+        <button
+          type="button"
+          className="upload-browse-btn"
+          disabled={loading}
+          onClick={openFilePicker}
+        >
+          {loading ? "Analyzing..." : "Browse files"}
+        </button>
       </div>
 
       {selectedFiles.length > 0 && !loading && (
@@ -127,23 +152,17 @@ export function UploadZone({ onUpload, loading, onError }: Props) {
       <div className="upload-actions">
         <button
           type="button"
-          className="tab"
+          className="sample-link-btn"
           disabled={loading || sampleLoading}
-          onClick={(event) => {
-            event.stopPropagation();
-            loadSampleData();
-          }}
+          onClick={loadSampleData}
         >
-          {sampleLoading ? "Loading sample..." : "Try sample data"}
+          {sampleLoading ? "Loading sample..." : "Try sample data instead — nothing is saved →"}
         </button>
-        <span className="upload-note">Instant demo — nothing is saved</span>
       </div>
 
-      <PrivacyFlow />
-      <p className="privacy-flow-note">
-        Data never leaves your device. We only read Merchant, Category, and Amount — not full bank
-        statements.
-      </p>
+      <div className="privacy-strip">
+        Nothing you upload is stored on a server. Refresh the page and session data is gone.
+      </div>
     </section>
   );
 }

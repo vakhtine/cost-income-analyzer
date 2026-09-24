@@ -1,24 +1,28 @@
 import { Transaction } from "@/lib/types";
 
+export function formatHealthReportPeriodLabel(
+  focusLabel: string,
+  periodsAnalyzed: number
+): string {
+  if (periodsAnalyzed <= 1) return focusLabel;
+
+  const normalized = focusLabel.trim();
+  if (normalized === "All periods" || normalized.toLowerCase().startsWith("average")) {
+    return `${normalized} (${periodsAnalyzed} month${periodsAnalyzed === 1 ? "" : "s"})`;
+  }
+
+  if (/[–-]/.test(normalized)) {
+    return `${normalized} (${periodsAnalyzed} month${periodsAnalyzed === 1 ? "" : "s"})`;
+  }
+
+  return `${normalized} (trailing ${periodsAnalyzed} month${periodsAnalyzed === 1 ? "" : "s"})`;
+}
+
 export function getPeriodExpenseDateLabel(
-  rows: Transaction[],
+  _rows: Transaction[],
   periodLabel: string
 ): string {
-  const expenseDates = rows
-    .filter((row) => row.transaction_type === "expense" && row.date)
-    .map((row) => row.date as string)
-    .sort();
-
-  if (!expenseDates.length) {
-    return `Period: ${periodLabel}`;
-  }
-
-  const start = expenseDates[0];
-  const end = expenseDates[expenseDates.length - 1];
-  if (start === end) {
-    return `Expenses dated ${start} (${periodLabel})`;
-  }
-  return `Expenses dated ${start} – ${end} (${periodLabel})`;
+  return `Period: ${periodLabel}`;
 }
 
 export function getReportPrivacyNotice(notice: string) {

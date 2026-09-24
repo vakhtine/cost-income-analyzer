@@ -1,15 +1,23 @@
 import { canonicalExpenseCategory } from "@/lib/category-normalize";
+import { isPersonToPersonCategory } from "@/lib/constants";
 import {
   filterExpenseTransactions,
   filterIncomeTransactions,
   isExpenseTransaction,
+  normalizeTransaction,
 } from "@/lib/transaction-filters";
 import { CategorySummary, MerchantSummary, PeriodAnalysis, Transaction } from "@/lib/types";
 import { round2 } from "@/lib/utils";
 
+export type Top5ExpenseCategory = CategorySummary & {
+  pct_of_all_expenses: number;
+  pct_of_income_top5: number;
+};
+
 function groupExpenseCategories(rows: Transaction[]) {
   const map = new Map<string, { total: number; count: number }>();
   for (const row of filterExpenseTransactions(rows)) {
+    if (isPersonToPersonCategory(row.category)) continue;
     const category = canonicalExpenseCategory(row.category);
     const current = map.get(category) ?? { total: 0, count: 0 };
     current.total += row.abs_amount;
@@ -45,16 +53,32 @@ function detectUnusual(expenseCategories: CategorySummary[]) {
   return expenseCategories.filter((item) => item.total >= threshold);
 }
 
+export function top5ExpenseCategories(analysis: PeriodAnalysis): Top5ExpenseCategory[] {
+  const topCategories = analysis.expense_categories.slice(0, 5);
+  const totalExpenses = analysis.total_expenses || 0;
+  const totalIncome = analysis.total_income || 0;
+  return topCategories.map((item) => ({
+    ...item,
+    pct_of_all_expenses: totalExpenses
+      ? round2((item.total / totalExpenses) * 100)
+      : 0,
+    pct_of_income_top5: totalIncome
+      ? round2(((item.pct_of_income ?? (item.total / totalIncome) * 100)))
+      : 0,
+  }));
+}
+
 export function analyzeTransactions(rows: Transaction[]): PeriodAnalysis {
-  const incomeRows = filterIncomeTransactions(rows);
-  const expenseRows = filterExpenseTransactions(rows);
+  const normalizedRows = rows.map(normalizeTransaction);
+  const incomeRows = filterIncomeTransactions(normalizedRows);
+  const expenseRows = filterExpenseTransactions(normalizedRows);
   const total_income = round2(incomeRows.reduce((sum, row) => sum + row.abs_amount, 0));
-  const expenseGroups = groupExpenseCategories(rows);
+  const expenseGroups = groupExpenseCategories(normalizedRows);
   const total_expenses = round2(expenseGroups.reduce((sum, item) => sum + item.total, 0));
   const net_savings = round2(total_income - total_expenses);
   const savings_rate = total_income ? round2((net_savings / total_income) * 100) : 0;
 
-  const income_categories: CategorySummary[] = groupIncomeCategories(rows).map((item) => ({
+  const income_categories: CategorySummary[] = groupIncomeCategories(normalizedRows).map((item) => ({
     category: item.category,
     total: round2(item.total),
     count: item.count,

@@ -3,7 +3,7 @@ export async function fetchWhereNextCityPrices<T = unknown>(cityKey?: string): P
     ? `/api/city-prices?city=${encodeURIComponent(cityKey)}`
     : "/api/city-prices";
 
-  const response = await fetch(url);
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(payload?.error ?? "Could not fetch city prices.");

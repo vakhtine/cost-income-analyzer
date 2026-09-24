@@ -6,6 +6,8 @@ export type WizardStep =
   | "analyze"
   | "relocate";
 
+export type TopTab = "start" | "analyze" | "relocate";
+
 export const WIZARD_STEPS: { id: WizardStep; label: string; description: string }[] = [
   { id: "upload", label: "Upload", description: "Add your CSV or spreadsheet statements" },
   { id: "clean", label: "Clean", description: "Fix categories & transfers" },
@@ -18,6 +20,25 @@ export const WIZARD_STEPS: { id: WizardStep; label: string; description: string 
   { id: "analyze", label: "Analyze", description: "Understand your cash flow" },
   { id: "relocate", label: "Relocate", description: "Can you afford to move?" },
 ];
+
+export function getStartSubSteps(hasMultiplePeriods: boolean) {
+  const ids: WizardStep[] = hasMultiplePeriods
+    ? ["upload", "clean", "review", "exclude-periods"]
+    : ["upload", "clean", "review"];
+  return WIZARD_STEPS.filter((step) => ids.includes(step.id));
+}
+
+export function wizardStepToTopTab(step: WizardStep): TopTab {
+  if (step === "analyze") return "analyze";
+  if (step === "relocate") return "relocate";
+  return "start";
+}
+
+export function topTabToDefaultStep(tab: TopTab, hasMultiplePeriods: boolean): WizardStep {
+  if (tab === "analyze") return "analyze";
+  if (tab === "relocate") return "relocate";
+  return "upload";
+}
 
 export function visibleWizardSteps(hasMultiplePeriods: boolean) {
   let steps = WIZARD_STEPS;

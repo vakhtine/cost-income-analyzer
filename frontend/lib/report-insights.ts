@@ -110,10 +110,11 @@ function merchantTotalsByCategory(rows: Transaction[]) {
 
 export type CategoryChangeExplanation = {
   category: string;
-  change_pct: number;
+  change_pct: number | null;
   current_total: number;
   prior_total: number;
   explanation: string;
+  is_new: boolean;
 };
 
 export function buildCategoryChangeExplanations(
@@ -149,32 +150,37 @@ export function buildCategoryChangeExplanations(
       topDelta = currentMerchants.get(topMerchant) ?? 0;
     }
 
-    const pctLabel =
-      Math.abs(trend.change_pct) >= 100
-        ? "100"
-        : Math.abs(trend.change_pct).toFixed(0);
-
     const amountDetail = formatAmount
       ? ` (${formatAmount(trend.current_total)} vs ${formatAmount(trend.prior_total)} from the previous month).`
       : ` ($${trend.current_total.toFixed(2)} vs $${trend.prior_total.toFixed(2)} from the previous month).`;
 
     let explanation: string;
-    if (Math.abs(trend.change_pct) < 5) {
+    if (trend.prior_total === 0 && trend.current_total > 0) {
+      explanation = `${category} is a new category this period${amountDetail}`;
+      if (topMerchant) {
+        explanation += ` Largest driver was ${topMerchant}.`;
+      }
+    } else if (trend.current_total === 0 && trend.prior_total > 0) {
+      explanation = `${category} had no spending this period (previously ${formatAmount ? formatAmount(trend.prior_total) : `$${trend.prior_total.toFixed(2)}`}).`;
+    } else if (trend.change_pct === null) {
+      explanation = `${category} changed this period${amountDetail}`;
+    } else if (Math.abs(trend.change_pct) < 5) {
       explanation = `${category} held steady from the previous month${amountDetail}`;
     } else if (trend.change_pct > 0) {
+      const pctLabel =
+        Math.abs(trend.change_pct) >= 100
+          ? "100"
+          : Math.abs(trend.change_pct).toFixed(0);
       explanation = `${category} increased ${pctLabel}% from the previous month${amountDetail}`;
+      if (topMerchant && Math.abs(topDelta) > 0) {
+        explanation += ` Largest driver was ${topMerchant}.`;
+      }
     } else {
+      const pctLabel = Math.abs(trend.change_pct).toFixed(0);
       explanation = `${category} decreased ${pctLabel}% from the previous month${amountDetail}`;
-    }
-
-    if (topMerchant && Math.abs(topDelta) > 0 && trend.change_pct >= 5) {
-      explanation += ` Largest driver was ${topMerchant}.`;
-    } else if (topMerchant && trend.change_pct <= -5) {
-      explanation += ` Largest reduction was ${topMerchant}.`;
-    } else if (trend.prior_total === 0 && trend.current_total > 0 && topMerchant) {
-      explanation = `${category} increased from the previous month. Largest driver was ${topMerchant}.`;
-    } else if (trend.current_total === 0 && trend.prior_total > 0) {
-      explanation = `${category} decreased from the previous month — no spending recorded this period.`;
+      if (topMerchant) {
+        explanation += ` Largest reduction was ${topMerchant}.`;
+      }
     }
 
     return {
@@ -183,6 +189,7 @@ export function buildCategoryChangeExplanations(
       current_total: trend.current_total,
       prior_total: trend.prior_total,
       explanation,
+      is_new: trend.prior_total === 0 && trend.current_total > 0,
     };
   });
 }

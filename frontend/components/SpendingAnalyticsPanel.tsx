@@ -1,12 +1,11 @@
 "use client";
 
 import { canonicalExpenseCategory } from "@/lib/category-normalize";
+import { isPersonToPersonCategory } from "@/lib/constants";
 import { CategoryLabel } from "@/components/CategoryIcon";
 import { PeriodSelect } from "@/components/PeriodSelect";
 import { topMerchantsByCategoryMap } from "@/lib/category-merchants";
-import {
-  categoryTrendChangeTone,
-} from "@/lib/metric-tones";
+import { categoryTrendChangeTone } from "@/lib/metric-tones";
 import { useMemo } from "react";
 import { analyzeTransactions } from "@/lib/analyzer";
 import { useCurrency } from "@/lib/currency-context";
@@ -14,7 +13,6 @@ import {
   AVERAGE_PERIOD_LABEL,
   analyzeAveragePeriods,
   analyzeCombinedPeriods,
-  healthScoreForPeriodSelection,
 } from "@/lib/rebuild";
 import {
   adjacentPeriodPair,
@@ -23,6 +21,7 @@ import {
   detectAnomalies,
   expenseSpendType,
 } from "@/lib/spending-metrics";
+import { periodHasReportableData } from "@/lib/transaction-filters";
 import { UI_LABELS } from "@/lib/ui-labels";
 import { AnalyzeResponse } from "@/lib/types";
 
@@ -32,7 +31,8 @@ type Props = {
   onPeriodChange: (period: string) => void;
 };
 
-function trendLabel(trend: string, changePct: number) {
+function trendLabel(trend: string, changePct: number | null) {
+  if (trend === "New" || changePct === null) return "New category";
   if (trend === "Spike" || changePct >= 50) return `+${changePct.toFixed(1)}% ▲ ${trend}`;
   if (changePct > 5) return `+${changePct.toFixed(1)}% ▲ Up`;
   if (changePct < -5) return `${changePct.toFixed(1)}% ▼ Down`;
@@ -45,6 +45,11 @@ export function SpendingAnalyticsPanel({ data, selectedPeriod, onPeriodChange }:
   const isAllPeriods = effectivePeriod === "All periods";
   const isAveragePeriod = effectivePeriod === AVERAGE_PERIOD_LABEL;
 
+  const reportablePeriods = useMemo(
+    () => data.periods.filter((period) => periodHasReportableData(data.period_rows[period] ?? [])),
+    [data.period_rows, data.periods]
+  );
+
   const periodAnalysis = useMemo(() => {
     if (isAllPeriods) return analyzeCombinedPeriods(data.period_rows);
     if (isAveragePeriod) return analyzeAveragePeriods(data.period_rows);
@@ -52,22 +57,20 @@ export function SpendingAnalyticsPanel({ data, selectedPeriod, onPeriodChange }:
   }, [data.period_rows, effectivePeriod, isAllPeriods, isAveragePeriod]);
 
   const focusPeriod = isAllPeriods || isAveragePeriod
-    ? data.periods[data.periods.length - 1]
+    ? reportablePeriods[reportablePeriods.length - 1] ?? effectivePeriod
     : effectivePeriod;
 
-  const healthScore = useMemo(
-    () => healthScoreForPeriodSelection(data.period_rows, effectivePeriod, data.periods),
-    [data.period_rows, data.periods, effectivePeriod]
-  );
-
   const trends = useMemo(
-    () => computeCategoryTrends(data.period_rows, data.periods, focusPeriod),
-    [data.period_rows, data.periods, focusPeriod]
+    () =>
+      reportablePeriods.length >= 2
+        ? computeCategoryTrends(data.period_rows, reportablePeriods, focusPeriod)
+        : null,
+    [data.period_rows, focusPeriod, reportablePeriods]
   );
 
   const volatility = useMemo(
-    () => computeCategoryVolatility(data.period_rows, data.periods),
-    [data.period_rows, data.periods]
+    () => computeCategoryVolatility(data.period_rows, reportablePeriods),
+    [data.period_rows, reportablePeriods]
   );
 
   const volatilityByCategory = useMemo(() => {
@@ -79,11 +82,11 @@ export function SpendingAnalyticsPanel({ data, selectedPeriod, onPeriodChange }:
   }, [volatility]);
 
   const anomalies = useMemo(
-    () => detectAnomalies(data.period_rows, data.periods, focusPeriod),
-    [data.period_rows, data.periods, focusPeriod]
+    () => detectAnomalies(data.period_rows, reportablePeriods, focusPeriod),
+    [data.period_rows, focusPeriod, reportablePeriods]
   );
 
-  const periodPair = adjacentPeriodPair(data.periods, focusPeriod);
+  const periodPair = adjacentPeriodPair(reportablePeriods, focusPeriod);
 
   const merchantSourceRows = useMemo(() => {
     if (isAllPeriods || isAveragePeriod) {
@@ -97,10 +100,17 @@ export function SpendingAnalyticsPanel({ data, selectedPeriod, onPeriodChange }:
     [merchantSourceRows]
   );
 
-  if (!periodAnalysis || !healthScore.metrics) return null;
+  if (!periodAnalysis) return null;
+
+  const trendEmptyMessage =
+    reportablePeriods.length < 2
+      ? "Upload more than one month to unlock month-over-month category trends and anomaly flags."
+      : !periodPair
+        ? `${focusPeriod} is your earliest period — select a later period to compare against the prior month.`
+        : null;
 
   return (
-    <section className="card trend-anomaly-panel">
+    <section className="card spending-by-category-panel">
       <div className="section-heading section-heading-with-period">
         <PeriodSelect
           periods={data.periods}
@@ -108,19 +118,14 @@ export function SpendingAnalyticsPanel({ data, selectedPeriod, onPeriodChange }:
           onChange={onPeriodChange}
         />
         <div className="section-heading-content">
-          <h3>Trend &amp; anomaly view</h3>
+          <h3>{UI_LABELS.spendingByCategory}</h3>
           <p>
-            Expenses category breakdown, month-over-month category trends, and outlier flags for
-            the selected period.
+            Full expense category breakdown for the selected period, including spend type and
+            month-to-month volatility.
           </p>
         </div>
       </div>
 
-      <h4 className="analytics-subheading">{UI_LABELS.spendingByCategory}</h4>
-      <p className="explanatory-callout metric-hint">
-        Volatility shows month-to-month variation for each expenses category (coefficient of
-        variation across periods).
-      </p>
       <div className="table-scroll">
         <table className="category-matrix-table">
           <thead>
@@ -133,7 +138,9 @@ export function SpendingAnalyticsPanel({ data, selectedPeriod, onPeriodChange }:
             </tr>
           </thead>
           <tbody>
-            {periodAnalysis.expense_categories.map((item) => {
+            {periodAnalysis.expense_categories
+              .filter((item) => !isPersonToPersonCategory(item.category))
+              .map((item) => {
               const categoryVolatility = volatilityByCategory.get(
                 canonicalExpenseCategory(item.category)
               );
@@ -173,39 +180,98 @@ export function SpendingAnalyticsPanel({ data, selectedPeriod, onPeriodChange }:
         </table>
       </div>
 
-      {trends?.length ? (
-        <>
-          <h4 className="analytics-subheading">
-            {UI_LABELS.categoryTrend}
-            {periodPair
-              ? ` — ${periodPair.currentPeriod} vs ${periodPair.priorPeriod}`
-              : ""}
-          </h4>
-          <div className="table-scroll">
-            <table className="category-matrix-table">
-              <thead>
-                <tr>
-                  <th>{UI_LABELS.expensesCategory}</th>
-                  <th>
-                    This period
-                    {periodPair ? ` (${periodPair.currentPeriod})` : ""}
-                  </th>
-                  <th>
-                    Prior period
-                    {periodPair ? ` (${periodPair.priorPeriod})` : ""}
-                  </th>
-                  <th>Change</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trends.slice(0, 8).map((item) => {
-                  const changeTone = categoryTrendChangeTone(
-                    item.current_total,
-                    item.prior_total,
-                    item.change_pct
-                  );
-                  return (
-                    <tr key={item.category}>
+      <div className="analytics-section-block trend-anomaly-panel">
+        <div className="section-heading">
+          <div className="section-heading-content">
+            <h3>Trend &amp; anomaly view</h3>
+            <p>
+              Month-over-month category trends and outlier flags for the selected period — separate
+              from the spending breakdown above.
+            </p>
+          </div>
+        </div>
+
+        {trends?.length ? (
+          <div className="analytics-section-block">
+            <h4 className="analytics-subheading">
+              {UI_LABELS.categoryTrend}
+              {periodPair
+                ? ` — ${periodPair.currentPeriod} vs ${periodPair.priorPeriod}`
+                : ""}
+            </h4>
+            <div className="table-scroll">
+              <table className="category-matrix-table">
+                <thead>
+                  <tr>
+                    <th>{UI_LABELS.expensesCategory}</th>
+                    <th>
+                      This period
+                      {periodPair ? ` (${periodPair.currentPeriod})` : ""}
+                    </th>
+                    <th>
+                      Prior period
+                      {periodPair ? ` (${periodPair.priorPeriod})` : ""}
+                    </th>
+                    <th>Change</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trends.slice(0, 8).map((item) => {
+                    const changeTone = categoryTrendChangeTone(
+                      item.current_total,
+                      item.prior_total,
+                      item.change_pct
+                    );
+                    const isNewCategory = item.prior_total === 0 && item.current_total > 0;
+                    return (
+                      <tr key={item.category}>
+                        <td>
+                          <CategoryLabel
+                            category={item.category}
+                            iconSize={42}
+                            topMerchants={merchantsMap.get(canonicalExpenseCategory(item.category))}
+                          />
+                        </td>
+                        <td>{formatExpense(item.current_total)}</td>
+                        <td>{formatExpense(item.prior_total)}</td>
+                        <td className={changeTone ? `metric-tone-${changeTone}` : undefined}>
+                          {isNewCategory ? (
+                            <span className="type-pill type-pill-new">New category</span>
+                          ) : (
+                            trendLabel(item.trend, item.change_pct)
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : trendEmptyMessage ? (
+          <p className="insight">{trendEmptyMessage}</p>
+        ) : null}
+
+        {anomalies.anomalies.length ? (
+          <div className="analytics-section-block">
+            <h4 className="analytics-subheading">Anomaly flags</h4>
+            <div className="table-scroll">
+              <table className="category-matrix-table">
+                <thead>
+                  <tr>
+                    <th>Merchant</th>
+                    <th>{UI_LABELS.expensesCategory}</th>
+                    <th>Amount</th>
+                    <th>Flag</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {anomalies.anomalies.slice(0, 6).map((item) => (
+                    <tr key={`${item.merchant_name}-${item.category}`}>
+                      <td>
+                        {item.merchant_name}
+                        {item.transaction_count > 1 ? ` (${item.transaction_count} txns)` : ""}
+                      </td>
                       <td>
                         <CategoryLabel
                           category={item.category}
@@ -213,67 +279,25 @@ export function SpendingAnalyticsPanel({ data, selectedPeriod, onPeriodChange }:
                           topMerchants={merchantsMap.get(canonicalExpenseCategory(item.category))}
                         />
                       </td>
-                      <td>{formatExpense(item.current_total)}</td>
-                      <td>{formatExpense(item.prior_total)}</td>
-                      <td className={changeTone ? `metric-tone-${changeTone}` : undefined}>
-                        {trendLabel(item.trend, item.change_pct)}
+                      <td>{formatExpense(item.amount)}</td>
+                      <td className={item.multiplier >= 10 ? "metric-tone-negative" : undefined}>
+                        {item.description}
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="insight">
+              {anomalies.anomalies.length} anomal
+              {anomalies.anomalies.length === 1 ? "y" : "ies"} detected out of{" "}
+              {anomalies.total_transactions} transactions.
+            </p>
           </div>
-        </>
-      ) : null}
-
-      {anomalies.anomalies.length ? (
-        <>
-          <h4 className="analytics-subheading">Anomaly flags</h4>
-          <p className="explanatory-callout metric-hint">
-            Flags merchant spending at least 10× the prior month&apos;s total for that expenses
-            category{periodPair ? ` (${periodPair.priorPeriod} vs ${periodPair.currentPeriod})` : ""}.
-          </p>
-          <div className="table-scroll">
-            <table className="category-matrix-table">
-              <thead>
-                <tr>
-                  <th>Merchant</th>
-                  <th>{UI_LABELS.expensesCategory}</th>
-                  <th>Amount</th>
-                  <th>Flag</th>
-                </tr>
-              </thead>
-              <tbody>
-                {anomalies.anomalies.slice(0, 6).map((item) => (
-                  <tr key={`${item.merchant_name}-${item.category}`}>
-                    <td>
-                      {item.merchant_name}
-                      {item.transaction_count > 1 ? ` (${item.transaction_count} txns)` : ""}
-                    </td>
-                    <td>
-                      <CategoryLabel
-                        category={item.category}
-                        iconSize={42}
-                        topMerchants={merchantsMap.get(canonicalExpenseCategory(item.category))}
-                      />
-                    </td>
-                    <td>{formatExpense(item.amount)}</td>
-                    <td className={item.multiplier >= 10 ? "metric-tone-negative" : undefined}>
-                      {item.description}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="insight">
-            {anomalies.anomalies.length} anomal
-            {anomalies.anomalies.length === 1 ? "y" : "ies"} detected out of{" "}
-            {anomalies.total_transactions} transactions.
-          </p>
-        </>
-      ) : null}
+        ) : reportablePeriods.length >= 2 && periodPair ? (
+          <p className="insight">No anomaly flags for {focusPeriod}.</p>
+        ) : null}
+      </div>
     </section>
   );
 }

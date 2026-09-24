@@ -1,17 +1,22 @@
 import type { Metadata } from "next";
-import { AppBrandBackground } from "@/components/AppBrandBackground";
 import { AppProviders } from "@/components/AppProviders";
-import { Caveat, DM_Sans } from "next/font/google";
+import { Fraunces, IBM_Plex_Mono, Inter } from "next/font/google";
 import "./globals.css";
 
-const dmSans = DM_Sans({
+const inter = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
 });
 
-const caveat = Caveat({
+const fraunces = Fraunces({
   subsets: ["latin"],
-  variable: "--font-script",
+  variable: "--font-display",
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono",
 });
 
 export const metadata: Metadata = {
@@ -26,9 +31,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${dmSans.variable} ${caveat.variable}`}>
+    <html lang="en" className={`${inter.variable} ${fraunces.variable} ${ibmPlexMono.variable}`}>
       <body className="app-theme">
-        <AppBrandBackground />
         <AppProviders>{children}</AppProviders>
       </body>
     </html>

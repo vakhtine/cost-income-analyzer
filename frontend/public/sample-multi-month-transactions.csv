@@ -1,0 +1,52 @@
+Merchant,Category,Amount,Date
+Acme Corp,Salary,5200,2026-03-15
+City Pension Fund,Pension,1800,2026-03-01
+Vanguard,Investment Income,420,2026-03-10
+Chase Mortgage,Mortgage payment,2100,2026-03-01
+Whole Foods,Groceries,298.45,2026-03-06
+Trader Joe's,Groceries,175.20,2026-03-18
+Chipotle,Restaurants,72.50,2026-03-09
+Uber,Transport,118.80,2026-03-12
+Netflix,Subscriptions,15.99,2026-03-03
+Electric Company,Utilities,138.33,2026-03-04
+Amazon,Shopping,245.90,2026-03-14
+CVS Pharmacy,Healthcare,42.75,2026-03-20
+Shell Gas,Gas,88.40,2026-03-11
+Local Bistro,Restaurants,128.00,2026-03-22
+Spotify,Subscriptions,10.99,2026-03-02
+AMC Theaters,Entertainment,54.00,2026-03-16
+Acme Corp,Salary,5200,2026-04-15
+City Pension Fund,Pension,1800,2026-04-01
+Vanguard,Investment Income,450,2026-04-10
+Freelance Client,Other Income,650,2026-04-18
+Chase Mortgage,Mortgage payment,2100,2026-04-01
+Whole Foods,Groceries,325.45,2026-04-07
+Trader Joe's,Groceries,192.20,2026-04-19
+DoorDash,Restaurants,94.50,2026-04-08
+Uber,Transport,142.80,2026-04-13
+Netflix,Subscriptions,15.99,2026-04-03
+Electric Company,Utilities,151.33,2026-04-04
+Amazon,Shopping,312.90,2026-04-15
+CVS Pharmacy,Healthcare,38.75,2026-04-21
+Shell Gas,Gas,102.40,2026-04-10
+Local Bistro,Restaurants,156.00,2026-04-24
+Spotify,Subscriptions,10.99,2026-04-02
+Target,Shopping,89.25,2026-04-26
+AMC Theaters,Entertainment,48.00,2026-04-17
+Acme Corp,Salary,5350,2026-05-15
+City Pension Fund,Pension,1800,2026-05-01
+Vanguard,Investment Income,480,2026-05-10
+Chase Mortgage,Mortgage payment,2100,2026-05-01
+Whole Foods,Groceries,312.45,2026-05-06
+Trader Joe's,Groceries,189.20,2026-05-20
+Chipotle,Restaurants,86.50,2026-05-09
+Uber,Transport,124.80,2026-05-12
+Netflix,Subscriptions,15.99,2026-05-03
+Electric Company,Utilities,142.33,2026-05-04
+Amazon,Shopping,267.90,2026-05-14
+CVS Pharmacy,Healthcare,48.75,2026-05-18
+Shell Gas,Gas,95.40,2026-05-11
+Local Bistro,Restaurants,142.00,2026-05-23
+Spotify,Subscriptions,10.99,2026-05-02
+Target,Shopping,76.50,2026-05-25
+AMC Theaters,Entertainment,62.00,2026-05-16

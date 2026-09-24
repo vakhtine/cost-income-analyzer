@@ -1,3 +1,8 @@
+import {
+  isPersonToPersonCategory,
+  TRANSFER_CATEGORY_LABEL,
+} from "@/lib/constants";
+
 const EXPENSE_CATEGORY_CANONICAL: Record<string, string> = {
   grocery: "Groceries",
   groceries: "Groceries",
@@ -27,6 +32,7 @@ const EXPENSE_CATEGORY_CANONICAL: Record<string, string> = {
 };
 
 export function canonicalExpenseCategory(category: string): string {
+  if (isPersonToPersonCategory(category)) return TRANSFER_CATEGORY_LABEL;
   const trimmed = category.trim();
   if (!trimmed) return trimmed;
   const key = trimmed.toLowerCase();
@@ -41,6 +47,7 @@ export function canonicalCategoryName(
   category: string,
   transactionType: "income" | "expense" | "transfer"
 ): string {
+  if (isPersonToPersonCategory(category)) return TRANSFER_CATEGORY_LABEL;
   if (transactionType === "transfer") return category.trim();
   if (transactionType === "income") return category.trim();
   return canonicalExpenseCategory(category);
