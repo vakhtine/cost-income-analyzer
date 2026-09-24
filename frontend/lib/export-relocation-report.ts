@@ -613,7 +613,7 @@ function buildPageFour(payload: ReportPayload, context: RelocationPageContext) {
 
 function relocationReportPageBuilders(payload: ReportPayload) {
   const builders: Array<(context: RelocationPageContext) => string> = [
-    ...buildRelocationOverviewPageBuilders(payload).map((builder, index) => (context) =>
+    ...buildRelocationOverviewPageBuilders(payload).map((builder, index) => (context: RelocationPageContext) =>
       builder({
         ...context,
         showGeneratedAt: index === 0,
@@ -623,7 +623,7 @@ function relocationReportPageBuilders(payload: ReportPayload) {
   ];
 
   builders.push(
-    ...buildSpendingVsBestFitPageBuilders(payload).map((builder) => (context) =>
+    ...buildSpendingVsBestFitPageBuilders(payload).map((builder) => (context: RelocationPageContext) =>
       builder(context)
     ),
     (context) => buildPageFour(payload, context)

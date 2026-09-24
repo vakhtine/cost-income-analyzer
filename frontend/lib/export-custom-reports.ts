@@ -792,7 +792,7 @@ function buildReportPages(types: CustomReportType[], payload: CustomReportPayloa
     }
     const relocation = payload.relocation ?? fallbackRelocationPayload(payload);
     builders.push(
-      ...buildRelocationOverviewPageBuilders(relocation).map((builder) => (context) =>
+      ...buildRelocationOverviewPageBuilders(relocation).map((builder) => (context: PageContext) =>
         builder({
           ...context,
           reportLabel: REPORT_LABEL,
@@ -806,7 +806,7 @@ function buildReportPages(types: CustomReportType[], payload: CustomReportPayloa
       })
     );
     builders.push(
-      ...buildSpendingVsBestFitPageBuilders(relocation).map((builder) => (context) =>
+      ...buildSpendingVsBestFitPageBuilders(relocation).map((builder) => (context: PageContext) =>
         builder({
           ...context,
           reportLabel: REPORT_LABEL,
