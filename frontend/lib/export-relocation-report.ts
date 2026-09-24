@@ -23,7 +23,7 @@ import { CityAffordabilitySummary } from "@/lib/relocation-scenario";
 import { RelocationReadiness, RelocationTimeline } from "@/lib/relocation-profile";
 import { RelocationAffordability, RELOCATION_AFFORDABILITY_FACTOR_NOTES, AT_HOME_BUDGET_SCORE_LABEL } from "@/lib/relocation-affordability";
 import { AnalyzeResponse, LocationCompareResult, LocationComparison } from "@/lib/types";
-import { round2 } from "@/lib/utils";
+import { comparisonGapPct, round2 } from "@/lib/utils";
 import {
   buildFactorScorecardHtml,
   buildHorizontalGapBarChartSvg,
@@ -817,6 +817,7 @@ function filterReportableCategoryGaps(
   const hasRentInRecords = (userBenchmarkSpending.rent ?? 0) > 0;
   return comparisons.filter((row) => {
     if (row.reference_amount <= 0) return false;
+    if (row.difference_pct === null || row.user_amount <= 0) return false;
     const key = benchmarkKeyFromComparisonLabel(row.category);
     if (key === "rent" && !hasRentInRecords) return false;
     return true;
@@ -845,7 +846,18 @@ function resolveReportCategoryGaps(payload: ReportPayload): LocationComparison[]
   return rebuildCategoryGapsFromUserSpending(
     comparisons,
     payload.userBenchmarkSpending
-  );
+  ).map((row) => {
+    const userAmount = round2(payload.convertExpense(row.user_amount));
+    const referenceAmount = round2(payload.convertReferenceCost(row.reference_amount));
+    const difference = round2(userAmount - referenceAmount);
+    return {
+      ...row,
+      user_amount: userAmount,
+      reference_amount: referenceAmount,
+      difference,
+      difference_pct: comparisonGapPct(userAmount, referenceAmount),
+    };
+  });
 }
 
 function buildRelocationStoryGroup(title: string, bullets: string[]) {
@@ -998,7 +1010,7 @@ function buildLargestCategoryGaps(payload: ReportPayload) {
   return `
     <div class="chart-panel report-section-bordered gap-chart-compact">
       <h2 class="section-title">Largest category gaps by % — ${escapeHtml(homeShort)} vs ${escapeHtml(destShort)}</h2>
-      <p class="muted-note">Each bar compares your uploaded spending in a category to the estimated monthly cost in ${escapeHtml(destShort)} (same categories as the web app matrix). Percent gap = (your spending − destination estimate) ÷ destination estimate. Ranked by absolute % gap.</p>
+      <p class="muted-note">Each bar compares your uploaded spending in a category to the estimated monthly cost in ${escapeHtml(destShort)} (same categories as the web app matrix). Both amounts are converted to ${escapeHtml(payload.displayCurrency)} before the gap is calculated: (your spending − destination estimate) ÷ destination estimate. Categories with no uploaded spending are omitted. Ranked by absolute % gap.</p>
       ${rentOmissionNote}
       ${buildHorizontalGapBarChartSvg(
         [...filtered]

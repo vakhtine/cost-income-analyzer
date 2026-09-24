@@ -109,13 +109,14 @@ export function rebuildCategoryGapsFromUserSpending(
     if (referenceAmount <= 0) continue;
 
     const difference = round2(userAmount - referenceAmount);
-    const difference_pct = round2(
-      ((userAmount - referenceAmount) / referenceAmount) * 100
-    );
+    const difference_pct = comparisonGapPct(userAmount, referenceAmount);
     let status = "Near reference average";
-    if (difference_pct > 15) status = "Above reference average";
-    else if (difference_pct < -15) status = "Below reference average";
-    else if (userAmount === 0) status = "No user spending in this category";
+    if (difference_pct !== null) {
+      if (difference_pct > 15) status = "Above reference average";
+      else if (difference_pct < -15) status = "Below reference average";
+    } else if (userAmount === 0) {
+      status = "No user spending in this category";
+    }
 
     rebuilt.push({
       ...row,
